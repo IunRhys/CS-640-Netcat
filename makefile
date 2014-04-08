@@ -1,11 +1,11 @@
-CC=g++
-
+CC=gcc
+CFLAGS=-pthread
 all: snc
 
 snc: snc.o
-	$(CC) netcat.o -o snc
+	$(CC) $(CFLAGS) netcat.o -o snc
 snc.o:
-	$(CC)  -c netcat.c
+	$(CC) $(CFLAGS) -c netcat.c
 
 clean:
 	rm -rf *o snc

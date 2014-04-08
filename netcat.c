@@ -1,56 +1,134 @@
-/*Parse the arguments and make sure no conflicting arguments are provided
-Listen for or establish a connection, depending on whether or not the -l option is given
-Terminate a connection when Ctrl+D is pressed or the opposite side closes the connection
-Read text from stdin and send the text when the enter key is pressed
-When data is received, immediately output the data to stdout*/
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/socket.h>
 
-bool parseArg(int argc, char *argv[]){
-  /*skip argc[0] as that will be snc*/
-  char arg;
-  bool error = false;
+#define USAGE_MSG "invalid or missing options\nusage: snc [-k] [-l] [-u] [-s source_ip_address] [hostname] port\n"
+#define ERROR_MSG "internal error\n"
+
+/* Function for parsing the arguments. Returns false if there was an error, *
+ * true otherwise.                                                          */
+bool parseArgs(int argc, char *argv[], bool *isClient, bool *keepListening,
+  bool *isTCP);
+
+/* Handler function of the interruption signal */
+void inttrHandler(int num);
+
+/*****************************************************************************
+ * Main                                                                      *
+ *****************************************************************************/
+int main(int argc, char *argv[]){
   bool isClient = true;
+  bool keepListening = false;
+  bool isTCP = true;
+  bool error;
+
+  /* Parse the argumenets */
+  error = !parseArgs(argc, argv, &isClient, &keepListening, &isTCP);
+  if (error){
+    printf(USAGE_MSG);
+    exit(1);
+  }
+
+  /* Set up the interrupt handler action */
+  struct sigaction inttrAct;
+  inttrAct.sa_handler = inttrHandler;
+  sigemptyset(&inttrAct.sa_mask);
+  inttrAct.sa_flags = 0;
+
+  if(sigaction(SIGINT, &inttrAct, NULL) < 0){
+    printf(ERROR_MSG);
+    exit(1);
+  }
+
+  /*TODO*/
+  /* Set up socket(s?) with information gained from arguments */
+  /* Set up sigaction for handling ctrl+d */
+  while (true){
+
+  }
+  /* Handle if the other side terminates */
+  /* Read text from stdin */
+  /* Send when enter is pressed */
+  /* When data is received, output to stdout */
+}
+
+
+/*****************************************************************************
+ * Parse Arguments                                                           *
+ *****************************************************************************/
+bool parseArgs(int argc, char *argv[], bool *isClient, bool *keepListening,
+  bool *isTCP){
+
+  bool error = false;
+  bool dashS = false;
   int i;
 
-  for (i = 1; (i < argc) || !error; ++i){
+ for (i = 1; (i < argc); ++i){
     /* -k; Set keep listening variable */
     if (strcmp(argv[i], "-k") == 0){
-      //TODO
+      *keepListening = true;
     } 
+
     /* -l; Set as server instance */
     else if (strcmp(argv[i], "-l") == 0){
-      isClient = false;
-      //TODO: make this globally work
+      *isClient = false;
+      
+      /*DEBUG */
+      printf("-l processed\n");
     } 
+
     /* -s; Set IP_addr to send with */
     else if (strcmp(argv[i], "-s") == 0){
-      if (i + 2 <= argc - 1){
-        //TODO
+      /* Make sure that the source_ip_addr we read is 
+         neither the port or hostname */
+      if (i + 1 < argc - 2){
+        /*TODO*/
         /*Process addr. Check how sophisticated this should be*/
         /* Advance one to get the argument of the argument */
         ++i;
+        
+        dashS = true;
       } else {
         error = true;
       }
     }
+
     /* -u; Set packet type to UDP */ 
     else if (strcmp(argv[i], "-u") == 0){
-      //TODO
+      *isTCP = false;
     }
+
     /* Handle hostname */
     /* I'm pretty sure that by the magic of flow control, this option should
        always appear to be either the hostname field. Otherwise, it's caught
        above and won't be processed as a hostname */
     else if (i == argc - 2){
-      //TODO
+      /*TODO*/
       /*if client, REQUIRED. Set our 'send to' to this hostname*/
+      if(*isClient){
+      }      
       /*if server, optional. Set us as listening for this hostname?*/
+      else{
+      }
+      /*DEBUG*/
+      printf("hostname processed\n");
     }
     /* Handle port */
     else if (i == argc - 1){
-      //TODO
+      /*TODO*/
       /*if client, REQUIRED. Set out port*/
+      if(*isClient){
+
+      } 
       /*if server, REQUIRED. set in port*/
+      else {
+      }
+
+      /*DEBUG*/
+      printf("Port processed\n");
     }
     /* This option doesn't exist */
     else {
@@ -58,17 +136,18 @@ bool parseArg(int argc, char *argv[]){
     }
   }
 
-  /*Validation logic */
-  /*if k && isClient, ERROR*/
-  /*if s && !isClient, ERROR*/
+  /* Option validation logic */
+  if((*keepListening && *isClient) || (dashS && !*isClient)){error = true;}
 
-  if(error){
-      printf("invalid or missing options\nusage: snc [-k] [-l] [-u]");
-      printf("[-s source_ip_address] [hostname] port");
-  }
-  return error;
+  return !error;
 }
 
-int main(int argc, char *argv[]){
-
+/*****************************************************************************
+ * Interruption Handler                                                      *
+ *****************************************************************************/
+void inttrHandler(int num){
+  /*Close Connections*/
+  /*TODO*/
+  printf("\n");
+  exit(0);
 }
