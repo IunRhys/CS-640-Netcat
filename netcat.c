@@ -45,7 +45,20 @@ int main(int argc, char *argv[]){
 
   /*TODO*/
   /* Set up socket(s?) with information gained from arguments */
-  /* Set up sigaction for handling ctrl+d */
+  /* Set up sigaction for handling ctrl+d; this isn't a sigaction
+     thing actually, ctrl+d sends EOF to us. So if we see EOF while
+     reading input, do our handling things. */
+  /* Handling ctrl + d:
+     if (!isTCP) {
+       //stop reading and sending; continue to recieve
+     } else {
+       if (keepListening){
+         //close connection; wait for new connection
+       } else {
+         //close connection; if opposite side closes, exit
+       }
+     } 
+  */
   while (true){
 
   }
