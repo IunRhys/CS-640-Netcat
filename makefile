@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-pthread
+CFLAGS=-g -Wall -pthread
 all: snc
 
 snc: snc.o
