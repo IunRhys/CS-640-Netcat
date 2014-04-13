@@ -123,7 +123,7 @@ main (int argc, char *argv[])
 
       bzero(receiveBuffer, NCBUFFERSIZE);
 
-      if ( (read(newsockfd, receiveBuffer, NCBUFFERSIZE)) < 0)
+      if ( (recv(newsockfd, receiveBuffer, NCBUFFERSIZE, 0)) < 0)
       {
         perror("Socket: problem reading in buffer");
         exit(1);
@@ -131,8 +131,71 @@ main (int argc, char *argv[])
       }
 
       printf("Message received: %s\n\n", receiveBuffer);
+    
+      close(serverSocket);
+      fprintf(stdout, "\n");
+      exit(1);
     }
 
+  } /* else, begin client logic */
+  else
+  {
+    int clientSocket;
+    struct sockaddr_in clientAddress;
+
+    /* TCP socket initialization */
+
+    if ((clientSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+    {
+      perror("Socket: failed to create client socket");
+      exit(1);
+    }
+  
+    /* create server sockaddr_in structure */
+
+    memset(&clientAddress, 0, sizeof(clientAddress));
+    clientAddress.sin_family = AF_INET;
+    clientAddress.sin_addr.s_addr = inet_addr(argv[argc - 2]);
+
+    /* SAMTODO: use inet_ntoa to check if valid ip... if not, do a lookup */
+    /*
+
+net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
+
+
+
+    */
+
+
+    clientAddress.sin_port = htons(atoi(argv[argc - 1]));
+ 
+    /* try to connect */
+    /* SAMTODO: clean up these comments so they match above */
+
+    if (connect(clientSocket, (struct sockaddr *) &clientAddress,
+                        sizeof(clientAddress)) < 0)
+    {
+      perror("Socket: failed to connect client socket");
+      exit(1);
+    }
+
+    /* send a piece of data to the server */
+
+    char testData[4] = "sup";
+
+    if (send(clientSocket, testData, 4, 0) != 4)
+    {
+      perror("Socket: client failed to send data");
+      exit(1);
+    }
+    else
+    {
+      printf("client sent data successfully\n");
+    }
+
+    fprintf(stdout, "\n");
+    close(clientSocket);
+    exit(0);
   }
 
 
