@@ -68,20 +68,35 @@ main (int argc, char *argv[])
   {
     /* SAMTODO: -k option */
     
-    /* SAMTODO: -u option */
-
     /* SAMTODO: check for [hostname] field of argv parameters */
     
     int serverSocket;
     struct sockaddr_in serverAddress;
 
-    /* create a TCP socket */
-    if ((serverSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+
+    /* create a proper socket */
+
+    if (isTCP)
     {
-      perror("Socket: Falied to create socket");
-      exit(1);
+      /* create a TCP socket */
+      if ((serverSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+      {
+        perror("Socket: Falied to create server socket");
+        exit(1);
+      }
+      fprintf(stdout, "Socket: TCP server socket created");
     }
-    
+    else
+    {
+      /* create a UDP socket */
+      if ((serverSocket = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
+      {
+        perror("Socket: failed to create server socket");
+        exit(1);
+      }
+      fprintf(stdout, "Socket: UDP server socket created");
+
+    }
     /* initialize the socket address struct */
 
     memset(&serverAddress, 0, sizeof(serverAddress));
@@ -92,65 +107,97 @@ main (int argc, char *argv[])
     /* bind socket on server to a port */
     if (bind(serverSocket, (struct sockaddr *) &serverAddress, sizeof(serverAddress)) < 0)
     {
-      perror("Socket: failed to bind socket");
+      perror("Socket: failed to bind server socket");
       exit(1);
     }
     
-    /* try to listen on the socket */
-    if (listen(serverSocket, MAXPENDING) < 0)
+    /* if TCP, try to listen on the socket */
+    if (isTCP)
     {
-      perror("Socket: failed to listen on created socket");
-      exit(1);
-    }
-
-    printf("Socket: We are now successfully listening on this port\n");
-
-
-    int newsockfd;
-    unsigned int serv_addr = sizeof(serverAddress);
-
-    while (true)
-    {
-      newsockfd = accept(serverSocket, (struct sockaddr *) &serverAddress,
-                          &serv_addr);
-
-
-      if (newsockfd < 0)
+      if (listen(serverSocket, MAXPENDING) < 0)
       {
-        perror("Socket: error in accept function");
+        perror("Socket: failed to listen on created server socket");
         exit(1);
       }
 
-      bzero(receiveBuffer, NCBUFFERSIZE);
+      printf("Socket: We are now successfully listening on this port\n");
 
-      if ( (recv(newsockfd, receiveBuffer, NCBUFFERSIZE, 0)) < 0)
+      int newsockfd;
+      unsigned int serv_addr = sizeof(serverAddress);
+
+      while (true)
       {
-        perror("Socket: problem reading in buffer");
-        exit(1);
-  
-      }
+        newsockfd = accept(serverSocket, (struct sockaddr *) &serverAddress,
+                            &serv_addr);
 
-      printf("Message received: %s\n\n", receiveBuffer);
+
+        if (newsockfd < 0)
+        {
+          perror("Socket: error in accept function");
+          exit(1);
+        }
+
+        bzero(receiveBuffer, NCBUFFERSIZE);
+
+        if ( (recv(newsockfd, receiveBuffer, NCBUFFERSIZE, 0)) < 0)
+        {
+          perror("Socket: problem reading in buffer");
+          exit(1);
     
-      close(serverSocket);
-      fprintf(stdout, "\n");
-      exit(1);
+        }
+
+        printf("Message received: %s\n\n", receiveBuffer);
+      }
     }
+    
+    else /* UDP steps */
+    {
+      unsigned int serv_addr = sizeof(serverAddress);
+      int bytesReceived = recvfrom(serverSocket, receiveBuffer, NCBUFFERSIZE, 0,
+                            (struct sockaddr *) &serverAddress, &serv_addr);
+
+      printf("UDP: received %d bytes\n", bytesReceived);
+      if (bytesReceived > 0)
+      {
+        receiveBuffer[bytesReceived] = '\0';
+        printf("Message received (UDP): %s\n", receiveBuffer);
+      }
+    }
+
+
+    close(serverSocket);
+    fprintf(stdout, "\n");
+    exit(1);
 
   } /* else, begin client logic */
   else
   {
     int clientSocket;
     struct sockaddr_in clientAddress;
+    /* create a proper socket */
 
-    /* TCP socket initialization */
-
-    if ((clientSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+    if (isTCP)
     {
-      perror("Socket: failed to create client socket");
-      exit(1);
+      /* create a TCP socket */
+      if ((clientSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+      {
+        perror("Socket: Falied to create client socket");
+        exit(1);
+      }
+      fprintf(stdout, "Socket: TCP server client created");
     }
-  
+    else
+    {
+      /* create a UDP socket */
+      if ((clientSocket = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
+      {
+        perror("Socket: failed to create client socket");
+        exit(1);
+      }
+      fprintf(stdout, "Socket: UDP server client created");
+
+    }
+ 
     /* create server sockaddr_in structure */
 
     memset(&clientAddress, 0, sizeof(clientAddress));
@@ -168,29 +215,48 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
 
 
     clientAddress.sin_port = htons(atoi(argv[argc - 1]));
- 
-    /* try to connect */
-    /* SAMTODO: clean up these comments so they match above */
-
-    if (connect(clientSocket, (struct sockaddr *) &clientAddress,
-                        sizeof(clientAddress)) < 0)
-    {
-      perror("Socket: failed to connect client socket");
-      exit(1);
-    }
-
-    /* send a piece of data to the server */
 
     char testData[4] = "sup";
 
-    if (send(clientSocket, testData, 4, 0) != 4)
+    /* begin TCP client code */
+
+    if (isTCP)
+
     {
-      perror("Socket: client failed to send data");
-      exit(1);
+
+      /* try to connect */
+      /* SAMTODO: clean up these comments so they match above */
+
+      if (connect(clientSocket, (struct sockaddr *) &clientAddress,
+                          sizeof(clientAddress)) < 0)
+      {
+        perror("Socket: TCP failed to connect client socket");
+        exit(1);
+      }
+
+      /* send a piece of data to the server */
+
+
+      if (send(clientSocket, testData, 4, 0) != 4)
+      {
+        perror("Socket: TCP client failed to send data");
+        exit(1);
+      }
+      else
+      {
+        printf("client sent TCP data successfully\n");
+      }
     }
     else
     {
-      printf("client sent data successfully\n");
+
+      if (sendto(clientSocket, testData, 4, 0, (struct sockaddr *)&clientAddress,
+                     sizeof(clientAddress)) <0)
+      {
+        perror("Socket: UDP failed to connect client socket");
+        exit(1);
+      }
+      printf("client sent UDP data\n");
     }
 
     fprintf(stdout, "\n");
