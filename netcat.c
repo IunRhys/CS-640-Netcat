@@ -84,7 +84,7 @@ main (int argc, char *argv[])
         perror("Socket: Falied to create server socket");
         exit(1);
       }
-      fprintf(stdout, "Socket: TCP server socket created");
+      fprintf(stdout, "Socket: TCP server socket created\n");
     }
     else
     {
@@ -94,7 +94,7 @@ main (int argc, char *argv[])
         perror("Socket: failed to create server socket");
         exit(1);
       }
-      fprintf(stdout, "Socket: UDP server socket created");
+      fprintf(stdout, "Socket: UDP server socket created\n");
 
     }
     /* initialize the socket address struct */
@@ -110,7 +110,7 @@ main (int argc, char *argv[])
       perror("Socket: failed to bind server socket");
       exit(1);
     }
-    
+
     /* if TCP, try to listen on the socket */
     if (isTCP)
     {
@@ -218,6 +218,9 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
 
     char testData[4] = "sup";
 
+    /* SAMTODO: make sure we close this connection instantly if we the other
+     * server has gone down */
+
     /* begin TCP client code */
 
     if (isTCP)
@@ -235,8 +238,6 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
       }
 
       /* send a piece of data to the server */
-
-
       if (send(clientSocket, testData, 4, 0) != 4)
       {
         perror("Socket: TCP client failed to send data");
