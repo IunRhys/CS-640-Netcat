@@ -198,6 +198,16 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
     args.socketfd = clientSocket;
     args.tcp = isTCP; 
 
+  /* try to connect */
+  if (connect(clientSocket, (struct sockaddr *) &clientAddress,
+                      sizeof(clientAddress)) < 0)
+  {
+    perror("Socket: TCP failed to connect client socket.....");
+    exit(1);
+  }
+
+
+
     /* I am calling this function with a function pointer in case we want to use
      * it later for a separate thread on the client or server. */
     void * (*writeThreadPtr)(void *);
@@ -322,14 +332,14 @@ void *writeThreadEntry(void *arg)
 
   char sendBuffer[NCBUFFERSIZE];
  
-  /* try to connect */
+  /* try to connect 
   if (connect(sock, (struct sockaddr *) &sock_address,
                       sizeof(sock_address)) < 0)
   {
     perror("Socket: TCP failed to connect client socket.....");
     exit(1);
   }
-
+  */
  
   /* start polling for user input and enter characters as they are entered into
    * the buffer*/
@@ -363,6 +373,7 @@ void *writeThreadEntry(void *arg)
       else
       {
         printf("client sent TCP data successfully\n");
+        printf("sent: %s\n", sendBuffer);
       }
     }
     else
