@@ -25,7 +25,7 @@
  * true otherwise.                                                          */
 bool parseArgs (int argc, char * argv[], bool * isClient, bool * keepListening,
 		bool * isTCP, struct in_addr * sourceIPAddress, 
-                char * hostname, struct addrinfo * result, 
+                char * hostname, struct addrinfo ** result, 
                 struct addrinfo * hints);
 
 /* Handler function of the interruption signal */
@@ -62,8 +62,8 @@ main (int argc, char *argv[])
   pthread_t threads[NUMTHREADS];
   struct in_addr sourceIPAddress;
   /*DEBUG: figure out how I really want to do this...*/
-  char * hostname;
-  struct addrinfo * result;
+  char * hostname = NULL;
+  struct addrinfo * result = malloc(sizeof(struct addrinfo));
   struct addrinfo hints;
 
   /* Set up the hints for getaddrinfo */
@@ -77,8 +77,11 @@ main (int argc, char *argv[])
   hints.ai_next = NULL;
 
   /* Parse the argumenets */
+  /*DEBUG*/
+  /*printf("Result before parse: %d\n", (int)result);
+  printf("Point of result: %d\n", (int)&(*result));*/
   error = !parseArgs (argc, argv, &isClient, &keepListening, &isTCP,
-    &sourceIPAddress, hostname, result, &hints);
+    &sourceIPAddress, hostname, &result, &hints);
   if (error)
     {
       printf (USAGE_MSG);
@@ -119,7 +122,8 @@ main (int argc, char *argv[])
     /* SAMTODO: check for [hostname] field of argv parameters */
     
     int serverSocket;
-    struct sockaddr_in serverAddress;
+    /* ERIK CHANGING THIS TO POINTER */
+    struct sockaddr_in  * serverAddress;
 
 
     /* create a proper socket */
@@ -147,13 +151,26 @@ main (int argc, char *argv[])
     }
     /* initialize the socket address struct */
 
-    memset(&serverAddress, 0, sizeof(serverAddress));
+    /* ERIK: INITIALIZE IS ACTUALLY JUST USING THE STRUCTURE FROM THE PARSING */
+
+    struct sockaddr *sock = &(*(result)->ai_addr);
+
+    if(sock->sa_family == AF_INET){
+      /* DEBUG */
+      /*printf("About to cast sock\n");*/
+      serverAddress = (struct sockaddr_in *)sock;
+    } else {
+      printf("Socket: socket not AF_INET\n");
+    }
+    /*memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    serverAddress.sin_port = htons(atoi(argv[argc - 1]));
+    serverAddress.sin_port = htons(atoi(argv[argc - 1]));*/
 
+printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.s_addr);
+    
     /* bind socket on server to a port */
-    if (bind(serverSocket, (struct sockaddr *) &serverAddress, sizeof(serverAddress)) < 0)
+    if (bind(serverSocket, (struct sockaddr *) serverAddress, sizeof(*serverAddress)) < 0)
     {
       perror("Socket: failed to bind server socket");
       exit(1);
@@ -163,7 +180,7 @@ main (int argc, char *argv[])
     
     pthread_t readThread;
     struct arg_struct args;
-    args.addr = &serverAddress;
+    args.addr = serverAddress;
     args.socketfd = serverSocket;
     args.tcp = isTCP; 
 
@@ -184,8 +201,8 @@ main (int argc, char *argv[])
       }
       fprintf(stdout, "Socket: TCP server 2 socket created\n");
 
-    if (connect(serverSendSocket, (struct sockaddr *) &serverAddress,
-                      sizeof(serverAddress)) < 0)
+    if (connect(serverSendSocket, (struct sockaddr *) serverAddress,
+                      sizeof(*serverAddress)) < 0)
     {
       perror("Socket: TCP failed to connect server socket.....");
       exit(1);
@@ -227,7 +244,7 @@ main (int argc, char *argv[])
   else
   {
     int clientSocket, clientRecvSocket;
-    struct sockaddr_in clientAddress;
+    struct sockaddr_in * clientAddress;
     /* create a proper socket */
 
     if (isTCP)
@@ -260,10 +277,21 @@ main (int argc, char *argv[])
     }
  
     /* create server sockaddr_in structure */
+    /*ERIK ATTEMPTING TO EDIT THIS*/
 
-    memset(&clientAddress, 0, sizeof(clientAddress));
+    struct sockaddr *sock = &(*(result)->ai_addr);
+
+    if(sock->sa_family == AF_INET){
+      /* DEBUG */
+      /*printf("About to cast sock\n");*/
+      clientAddress = (struct sockaddr_in *)sock;
+    } else {
+      printf("Socket: socket not AF_INET\n");
+    }
+
+    /*memset(&clientAddress, 0, sizeof(clientAddress));
     clientAddress.sin_family = AF_INET;
-    clientAddress.sin_addr.s_addr = inet_addr(argv[argc - 2]);
+    clientAddress.sin_addr.s_addr = inet_addr(argv[argc - 2]);*/
 
     /* SAMTODO: use inet_ntoa to check if valid ip... if not, do a lookup */
     /*
@@ -272,20 +300,20 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
 
     */
 
-
-    clientAddress.sin_port = htons(atoi(argv[argc - 1]));
+    /*ERIK ATTEMPTING TO EDIT THIS
+    clientAddress.sin_port = htons(atoi(argv[argc - 1]));*/
 
     /* SAMTODO: make sure we close this connection instantly if we the other 
      * server has gone down */
 
     struct arg_struct args;
-    args.addr = &clientAddress;
+    args.addr = clientAddress;
     args.socketfd = clientSocket;
     args.tcp = isTCP; 
 
   /* try to connect */
   /* SAMTODO: figure out why this fails when passed as args */
-    if (connect(clientSocket, (struct sockaddr *) &clientAddress,
+    if (connect(clientSocket, (struct sockaddr *) clientAddress,
                       sizeof(clientAddress)) < 0)
     {
       perror("Socket: TCP failed to connect client socket.....");
@@ -494,7 +522,7 @@ void *writeThreadEntry(void *arg)
 bool
 parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
 	   bool * isTCP, struct in_addr * sourceIPAddress,
-           char * hostname, struct addrinfo * result, struct addrinfo * hints)
+           char * hostname, struct addrinfo ** result, struct addrinfo * hints)
 {
 
   bool error = false;
@@ -557,6 +585,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
       else if (i == argc - 2)
 	{
 	   hostString = argv[i];
+           hostname = hostString;
 	   /*DEBUG*/ printf ("hostname processed\n");
 	}
       /* Handle port */
@@ -567,16 +596,24 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
           printf("Port Wanted: %s,%d\n", argv[i], atoi(argv[i]));
           /*TODO*/
           /*Figure out why getaddrinfo returns not desired port*/
-          err = getaddrinfo(hostString, argv[i], hints, &result);
+          err = getaddrinfo(hostString, argv[i], hints, result);
           if (err != 0){
             error = true;
             printf("Errors: %s", gai_strerror(err));
             printf("Error processing host/port\n");
           }
           err = !isNumeric(argv[i]);
+          if (err){
+            error = true;
+            printf("Port is not numeric\n");
+          }
  
           /*DEBUG*/
-          struct sockaddr *sock = &(*(result)->ai_addr);
+    /*printf("Parse Result: %d\n", (int)result);
+    printf("Parse *result: %d\n", (int)*result);
+    printf("Parse ai_addr: %d\n", (int)&(*(result))->ai_addr);*/
+          struct sockaddr *sock = &(*(*(result))->ai_addr);
+    /*printf("sock: %d\n", (int)sock);*/
           if (sock->sa_family == AF_INET) {
             struct sockaddr_in *sin = (struct sockaddr_in*) sock;
             sin->sin_port = atoi(argv[i]);
