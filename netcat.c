@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <pthread.h>
+#include <ctype.h>
 
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -30,6 +31,7 @@ bool parseArgs (int argc, char * argv[], bool * isClient, bool * keepListening,
 /* Handler function of the interruption signal */
 void inttrHandler (int num);
 
+bool isNumeric(char *string);
 
 void *handleSending(void *threadid);
 
@@ -69,7 +71,7 @@ main (int argc, char *argv[])
   hints.ai_family = AF_INET;
   hints.ai_socktype = 0;
   hints.ai_protocol = 0;
-  /*hints.ai_flags = AI_NUMERICSERV;*/
+  hints.ai_flags = AI_NUMERICSERV;
   hints.ai_canonname = NULL;
   hints.ai_addr = NULL;
   hints.ai_next = NULL;
@@ -82,9 +84,6 @@ main (int argc, char *argv[])
       printf (USAGE_MSG);
       exit (1);
     }
-  /*DEBUG*/
-  printf(hostname);
-  printf("\n");
 
   /* Set up the interrupt handler action */
   struct sigaction inttrAct;
@@ -571,15 +570,20 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
           err = getaddrinfo(hostString, argv[i], hints, &result);
           if (err != 0){
             error = true;
-            printf(gai_strerror(err));
+            printf("Errors: %s", gai_strerror(err));
             printf("Error processing host/port\n");
           }
-
+          err = !isNumeric(argv[i]);
+ 
           /*DEBUG*/
           struct sockaddr *sock = &(*(result)->ai_addr);
           if (sock->sa_family == AF_INET) {
-          struct sockaddr_in *sin = (struct sockaddr_in*) sock;
-          printf("Port: %d, Addr: %d\n", sin->sin_port, sin->sin_addr.s_addr);
+            struct sockaddr_in *sin = (struct sockaddr_in*) sock;
+            sin->sin_port = atoi(argv[i]);
+            printf("Port: %d, Addr: %d\n", sin->sin_port, sin->sin_addr.s_addr);
+          } else {
+            printf("Error creating sockadd_in");
+            exit(1);
           }
 	   /*TODO*/
            /*FREE THIS STRUCTURE*/
@@ -611,7 +615,8 @@ void
 inttrHandler (int num)
 {
   /*Close Connections */
-   /*TODO*/ printf ("\n");
+  /*TODO*/ printf ("\n");
+  /* Free sockaddr made from parse args */
   exit (0);
 }
 
@@ -625,4 +630,15 @@ void *handleReceiving(void *threadid){
   /*DEBUG*/
   printf("I'm trying to handle receiving stuff\n");
   pthread_exit(NULL);
+}
+
+bool isNumeric(char *string){
+  while(*string){
+    if (!isdigit(*string))
+      return false;
+    else
+      ++string;
+  }
+
+  return true;
 }
