@@ -68,9 +68,7 @@ main (int argc, char *argv[])
     }
 
   /* Begin Sam server/client code */
-  /* create two essential arrays to hold messages as we receive and send them */
   
-  /* start code for if we were the server */
   /* check for -l flag */
   if (!isClient)
   {
@@ -199,12 +197,13 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
     args.tcp = isTCP; 
 
   /* try to connect */
-  if (connect(clientSocket, (struct sockaddr *) &clientAddress,
+  /* SAMTODO: figure out why this fails when passed as args */
+    if (connect(clientSocket, (struct sockaddr *) &clientAddress,
                       sizeof(clientAddress)) < 0)
-  {
-    perror("Socket: TCP failed to connect client socket.....");
-    exit(1);
-  }
+    {
+      perror("Socket: TCP failed to connect client socket.....");
+      exit(1);
+    }
 
 
 
@@ -274,19 +273,19 @@ void *readThreadEntry(void *arg)
 
     int newsockfd;
     unsigned int serv_addr = sizeof(sock_address);
-
-    while (true)
-    {
-      newsockfd = accept(sock, (struct sockaddr *) &sock_address,
+    
+    newsockfd = accept(sock, (struct sockaddr *) &sock_address,
                           &serv_addr);
-
-
-      if (newsockfd < 0)
+    if (newsockfd < 0)
       {
         perror("Socket: error in accept function");
         exit(1);
       }
 
+
+    while (true)
+    {
+      
       bzero(receiveBuffer, NCBUFFERSIZE);
 
       if ( (recv(newsockfd, receiveBuffer, NCBUFFERSIZE, 0)) < 0)
@@ -296,7 +295,7 @@ void *readThreadEntry(void *arg)
 
       }
 
-      printf("Message received: %s\n\n", receiveBuffer);
+      printf("Message received: %s\n", receiveBuffer);
     }
   }
 
@@ -344,15 +343,17 @@ void *writeThreadEntry(void *arg)
   /* start polling for user input and enter characters as they are entered into
    * the buffer*/
 
-  int i;
+  int i, bytes_sent;
 
   while (1)
   {
     for (i = 0; i <= (NCBUFFERSIZE - 1); i++) /* account for \0 in string */
     {
       sendBuffer[i] = fgetc(stdin);
-      if (sendBuffer[i] == EOF || sendBuffer[i] == '\n')
+/* SAMTODO: should we check for EOF here? */
+      if (sendBuffer[i] == '\n')
       {
+        sendBuffer[i] = '\0';
         break;
       }
     }
@@ -365,7 +366,8 @@ void *writeThreadEntry(void *arg)
 
     {
       /* send a piece of data to the server */
-      if (send(sock, sendBuffer, (i + 1) , 0) != (i + 1))
+      bytes_sent = send(sock, sendBuffer, (i + 1), 0);
+      if (bytes_sent != (i + 1))
       {
         perror("Socket: TCP client failed to send data");
         exit(1);
@@ -373,6 +375,7 @@ void *writeThreadEntry(void *arg)
       else
       {
         printf("client sent TCP data successfully\n");
+        printf("bytes sent: %d\n", bytes_sent);
         printf("sent: %s\n", sendBuffer);
       }
     }
