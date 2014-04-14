@@ -187,7 +187,7 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
     int newsockfd;
     unsigned int serv_addr = sizeof(serverAddress);
     
-    newsockfd = accept(serverSocket, (struct sockaddr *) &serverAddress,
+    newsockfd = accept(serverSocket, (struct sockaddr *) serverAddress,
                           &serv_addr);
     if (newsockfd < 0)
       {
@@ -203,13 +203,9 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
     
     pthread_t readThread;
     struct arg_struct args;
-<<<<<<< HEAD
+
     args.addr = serverAddress;
-    args.socketfd = serverSocket;
-=======
-    args.addr = &serverAddress;
     args.socketfd = newsockfd;
->>>>>>> swm/master
     args.tcp = isTCP; 
 
     if (pthread_create(&readThread, NULL, &readThreadEntry, (void *)&args))
@@ -270,13 +266,10 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
      */       
   else
   {
-<<<<<<< HEAD
+
     int clientSocket, clientRecvSocket;
     struct sockaddr_in * clientAddress;
-=======
-    int clientSocket;
-    struct sockaddr_in clientAddress;
->>>>>>> swm/master
+
     /* create a proper socket */
 
     if (isTCP)
