@@ -80,7 +80,7 @@ main (int argc, char *argv[])
     struct sockaddr_in serverAddress;
 
 
-    /* create a proper socket */
+    /* Create server socket to bind() to a port */
 
     if (isTCP)
     {
@@ -117,12 +117,35 @@ main (int argc, char *argv[])
       exit(1);
     }
 
+    if (listen(serverSocket, MAXPENDING) < 0)
+    {
+      perror("Socket: failed to listen on created server socket");
+      exit(1);
+    }
+
+    printf("Socket: We are now successfully listening on this port\n");
+
+    int newsockfd;
+    unsigned int serv_addr = sizeof(serverAddress);
+    
+    newsockfd = accept(serverSocket, (struct sockaddr *) &serverAddress,
+                          &serv_addr);
+    if (newsockfd < 0)
+      {
+        perror("Socket: error in accept function");
+        exit(1);
+      }
+    else
+    {
+       printf("Client connected.\n");
+    }
+
     /* Start separate threads for read data/stdout & stdin/send data */
     
     pthread_t readThread;
     struct arg_struct args;
     args.addr = &serverAddress;
-    args.socketfd = serverSocket;
+    args.socketfd = newsockfd;
     args.tcp = isTCP; 
 
     if (pthread_create(&readThread, NULL, &readThreadEntry, (void *)&args))
@@ -131,10 +154,9 @@ main (int argc, char *argv[])
       exit(1);
     }
 
-    /* create a separate socket for sending */
+    /* create a separate socket for sending 
 
     int serverSendSocket;
-    /* create a TCP socket */
     if ((serverSendSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
       {
         perror("Socket: Falied to create server socket");
@@ -148,8 +170,8 @@ main (int argc, char *argv[])
       perror("Socket: TCP failed to connect server socket.....");
       exit(1);
     }
-
-    args.socketfd = serverSendSocket;
+    
+    */
 
 
     /* begin reading in output */
@@ -184,27 +206,20 @@ main (int argc, char *argv[])
      */       
   else
   {
-    int clientSocket, clientRecvSocket;
+    int clientSocket;
     struct sockaddr_in clientAddress;
     /* create a proper socket */
 
     if (isTCP)
     {
-      /* create a TCP socket */
+      /* create a TCP socket for connecting to the server */
       if ((clientSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
       {
         perror("Socket: Falied to create client socket");
         exit(1);
       }
       fprintf(stdout, "Socket: TCP client created\n");
-    
-      /* create a second TCP socket for listening to server messages */
-      if ((clientRecvSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
-      {
-        perror("Socket: Falied to create client receive socket");
-        exit(1);
-      }
-      fprintf(stdout, "Socket: TCP client receive created\n");   }
+    } 
     else
     {
       /* create a UDP socket */
@@ -250,7 +265,19 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
       exit(1);
     }
 
+    /* Start separate threads for read data/stdout & stdin/send data */
+    
+    pthread_t readThread;
+    struct arg_struct clientArgs;
+    clientArgs.addr = &clientAddress;
+    clientArgs.socketfd = clientSocket;
+    clientArgs.tcp = isTCP; 
 
+    if (pthread_create(&readThread, NULL, &readThreadEntry, (void *)&clientArgs))
+    {
+      perror("Failed to create read thread");
+      exit(1);
+    }
 
     /* I am calling this function with a function pointer in case we want to use
      * it later for a separate thread on the client or server. */
@@ -305,35 +332,14 @@ void *readThreadEntry(void *arg)
 
   char receiveBuffer[NCBUFFERSIZE];
   
-  /* if TCP, try to listen on the socket */
   if (isTCP)
   {
-    if (listen(sock, MAXPENDING) < 0)
-    {
-      perror("Socket: failed to listen on created server socket");
-      exit(1);
-    }
-
-    printf("Socket: We are now successfully listening on this port\n");
-
-    int newsockfd;
-    unsigned int serv_addr = sizeof(sock_address);
-    
-    newsockfd = accept(sock, (struct sockaddr *) &sock_address,
-                          &serv_addr);
-    if (newsockfd < 0)
-      {
-        perror("Socket: error in accept function");
-        exit(1);
-      }
-
     int recv_num_bytes;
 
     while (true)
     {
-      
       bzero(receiveBuffer, NCBUFFERSIZE);
-      recv_num_bytes = recv(newsockfd, receiveBuffer, NCBUFFERSIZE, 0);
+      recv_num_bytes = recv(sock, receiveBuffer, NCBUFFERSIZE, 0);
       if (recv_num_bytes <= 0)
       {
         perror("Socket: problem reading in buffer");
