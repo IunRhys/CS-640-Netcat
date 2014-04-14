@@ -4,6 +4,8 @@
 #include <string.h>
 #include <signal.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <pthread.h>
 
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -16,14 +18,21 @@
 
 #define MAXPENDING 5
 #define NCBUFFERSIZE 1025 /* account for \0 + 1024 char possibilities here */
+#define NUMTHREADS 2
 
 /* Function for parsing the arguments. Returns false if there was an error, *
  * true otherwise.                                                          */
-bool parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
-		bool * isTCP);
+bool parseArgs (int argc, char * argv[], bool * isClient, bool * keepListening,
+		bool * isTCP, struct in_addr * sourceIPAddress, 
+                char * hostname, struct addrinfo * result, 
+                struct addrinfo * hints);
 
 /* Handler function of the interruption signal */
 void inttrHandler (int num);
+
+void *handleSending(void *threadid);
+
+void *handleReceiving(void *threadid);
 
 /*****************************************************************************
  * Main                                                                      *
@@ -35,14 +44,34 @@ main (int argc, char *argv[])
   bool keepListening = false;
   bool isTCP = true;
   bool error;
+  pthread_t threads[NUMTHREADS];
+  struct in_addr sourceIPAddress;
+  /*DEBUG: figure out how I really want to do this...*/
+  char * hostname;
+  struct addrinfo * result;
+  struct addrinfo hints;
+
+  /* Set up the hints for getaddrinfo */
+  memset(&hints, 0, sizeof(struct addrinfo));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = 0;
+  hints.ai_protocol = 0;
+  /*hints.ai_flags = AI_NUMERICSERV;*/
+  hints.ai_canonname = NULL;
+  hints.ai_addr = NULL;
+  hints.ai_next = NULL;
 
   /* Parse the argumenets */
-  error = !parseArgs (argc, argv, &isClient, &keepListening, &isTCP);
+  error = !parseArgs (argc, argv, &isClient, &keepListening, &isTCP,
+    &sourceIPAddress, hostname, result, &hints);
   if (error)
     {
       printf (USAGE_MSG);
       exit (1);
     }
+  /*DEBUG*/
+  printf(hostname);
+  printf("\n");
 
   /* Set up the interrupt handler action */
   struct sigaction inttrAct;
@@ -55,6 +84,18 @@ main (int argc, char *argv[])
       printf (ERROR_MSG);
       exit (1);
     }
+
+  int rc = pthread_create(&threads[0], NULL, handleReceiving, (void *)0);
+  if (rc != 0){
+    printf("Error creating receiving thread");
+    exit(1);
+  }
+
+  int rc2 = pthread_create(&threads[1], NULL, handleSending, (void *)1);
+  if (rc2 != 0){
+    printf("Error creating sending thread");
+    exit(1);
+  }
 
   /* Begin Sam server/client code */
   /* create two essential arrays to hold messages as we receive and send them */
@@ -284,10 +325,13 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
        }
        } 
      */
-    while (true)
+
+    /*while (true)
     {
 
-    }
+    }*/
+
+  pthread_exit(NULL);
   /* Handle if the other side terminates */
   /* Read text from stdin */
   /* Send when enter is pressed */
@@ -300,12 +344,14 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
  *****************************************************************************/
 bool
 parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
-	   bool * isTCP)
+	   bool * isTCP, struct in_addr * sourceIPAddress,
+           char * hostname, struct addrinfo * result, struct addrinfo * hints)
 {
 
   bool error = false;
   bool dashS = false;
   int i;
+  char * hostString = NULL;
 
   for (i = 1; (i < argc); ++i)
     {
@@ -331,11 +377,16 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
 	     neither the port or hostname */
 	  if (i + 1 < argc - 2)
 	    {
-	       /*TODO*/
-		/*Process addr. Check how sophisticated this should be */
 		/* Advance one to get the argument of the argument */
 		++i;
-
+                /* Process address */
+                int err;
+                err = inet_pton(AF_INET, argv[i], sourceIPAddress);
+                if (err == 0){
+                  error = true;
+                  /*DEBUG*/
+                  printf("Provided -s IP address cannot be converted\n");
+                }
 	      dashS = true;
 	    }
 	  else
@@ -356,32 +407,35 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
          above and won't be processed as a hostname */
       else if (i == argc - 2)
 	{
-	   /*TODO*/
-	    /*if client, REQUIRED. Set our 'send to' to this hostname */
-	    if (*isClient)
-	    {
-	    }
-	  /*if server, optional. Set us as listening for this hostname? */
-	  else
-	    {
-	    }
+	   hostString = argv[i];
 	   /*DEBUG*/ printf ("hostname processed\n");
 	}
       /* Handle port */
       else if (i == argc - 1)
 	{
+          int err;
+          /*DEBUG*/
+          printf("Port Wanted: %s,%d\n", argv[i], atoi(argv[i]));
+          /*TODO*/
+          /*Figure out why getaddrinfo returns not desired port*/
+          err = getaddrinfo(hostString, argv[i], hints, &result);
+          if (err != 0){
+            error = true;
+            printf(gai_strerror(err));
+            printf("Error processing host/port\n");
+          }
+
+          /*DEBUG*/
+          struct sockaddr *sock = &(*(result)->ai_addr);
+          if (sock->sa_family == AF_INET) {
+          struct sockaddr_in *sin = (struct sockaddr_in*) sock;
+          printf("Port: %d, Addr: %d\n", sin->sin_port, sin->sin_addr.s_addr);
+          }
 	   /*TODO*/
-	    /*if client, REQUIRED. Set out port */
-	    if (*isClient)
-	    {
+           /*FREE THIS STRUCTURE*/
 
-	    }
-	  /*if server, REQUIRED. set in port */
-	  else
-	    {
-	    }
-
-	   /*DEBUG*/ printf ("Port processed\n");
+          /*DEBUG*/ 
+          printf ("Port processed\n");
 	}
       /* This option doesn't exist */
       else
@@ -391,7 +445,8 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
     }
 
   /* Option validation logic */
-  if ((*keepListening && *isClient) || (dashS && !*isClient))
+  if ((*keepListening && *isClient) || (dashS && !*isClient) ||
+    (*isClient && (hostString == NULL)))
     {
       error = true;
     }
@@ -408,4 +463,16 @@ inttrHandler (int num)
   /*Close Connections */
    /*TODO*/ printf ("\n");
   exit (0);
+}
+
+void *handleSending(void *threadid){
+  /*DEBUG*/
+  printf("I'm trying to handle sending stuff\n");
+  pthread_exit(NULL);
+}
+
+void *handleReceiving(void *threadid){
+  /*DEBUG*/
+  printf("I'm trying to handle receiving stuff\n");
+  pthread_exit(NULL);
 }
