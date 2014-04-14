@@ -33,10 +33,6 @@ void inttrHandler (int num);
 
 bool isNumeric(char *string);
 
-void *handleSending(void *threadid);
-
-void *handleReceiving(void *threadid);
-
 void *readThreadEntry(void *);
 void *writeThreadEntry(void *arg);
 
@@ -59,7 +55,7 @@ main (int argc, char *argv[])
   bool keepListening = false;
   bool isTCP = true;
   bool error;
-  pthread_t threads[NUMTHREADS];
+  /*pthread_t threads[NUMTHREADS];*/
   struct in_addr sourceIPAddress;
   /*DEBUG: figure out how I really want to do this...*/
   char * hostname = NULL;
@@ -84,7 +80,7 @@ main (int argc, char *argv[])
     &sourceIPAddress, hostname, &result, &hints);
   if (error)
     {
-      printf (USAGE_MSG);
+      perror(USAGE_MSG);
       exit (1);
     }
 
@@ -96,11 +92,11 @@ main (int argc, char *argv[])
 
   if (sigaction (SIGINT, &inttrAct, NULL) < 0)
     {
-      printf (ERROR_MSG);
+      perror(ERROR_MSG);
       exit (1);
     }
 
-  int rc = pthread_create(&threads[0], NULL, handleReceiving, (void *)0);
+  /*int rc = pthread_create(&threads[0], NULL, handleReceiving, (void *)0);
   if (rc != 0){
     printf("Error creating receiving thread");
     exit(1);
@@ -110,7 +106,7 @@ main (int argc, char *argv[])
   if (rc2 != 0){
     printf("Error creating sending thread");
     exit(1);
-  }
+  }*/
 
   /* Begin Sam server/client code */
   
@@ -133,20 +129,22 @@ main (int argc, char *argv[])
       /* create a TCP socket */
       if ((serverSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
       {
-        perror("Socket: Falied to create server socket");
+        perror(ERROR_MSG);
+        /*perror("Socket: Falied to create server socket");*/
         exit(1);
       }
-      fprintf(stdout, "Socket: TCP server socket created\n");
+      /*fprintf(stdout, "Socket: TCP server socket created\n");*/
     }
     else
     {
       /* create a UDP socket */
       if ((serverSocket = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
       {
-        perror("Socket: failed to create server socket");
+        perror(ERROR_MSG);
+        /*perror("Socket: failed to create server socket");*/
         exit(1);
       }
-      fprintf(stdout, "Socket: UDP server socket created\n");
+      /*fprintf(stdout, "Socket: UDP server socket created\n");*/
 
     }
     /* initialize the socket address struct */
@@ -160,29 +158,33 @@ main (int argc, char *argv[])
       /*printf("About to cast sock\n");*/
       serverAddress = (struct sockaddr_in *)sock;
     } else {
-      printf("Socket: socket not AF_INET\n");
+      perror(ERROR_MSG);
+      exit(1);
+      /*printf("Socket: socket not AF_INET\n");*/
     }
     /*memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
     serverAddress.sin_port = htons(atoi(argv[argc - 1]));*/
 
-printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.s_addr);
+/*printf("Port: %d, Addr: %u\n", serverAddress->sin_port, serverAddress->sin_addr.s_addr);*/
     
     /* bind socket on server to a port */
     if (bind(serverSocket, (struct sockaddr *) serverAddress, sizeof(*serverAddress)) < 0)
     {
-      perror("Socket: failed to bind server socket");
+      perror(ERROR_MSG);
+      /*perror("Socket: failed to bind server socket");*/
       exit(1);
     }
 
     if (listen(serverSocket, MAXPENDING) < 0)
     {
-      perror("Socket: failed to listen on created server socket");
+      perror(ERROR_MSG);
+      /*perror("Socket: failed to listen on created server socket");*/
       exit(1);
     }
 
-    printf("Socket: We are now successfully listening on this port\n");
+    /*printf("Socket: We are now successfully listening on this port\n");*/
 
     int newsockfd;
     unsigned int serv_addr = sizeof(serverAddress);
@@ -191,12 +193,13 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
                           &serv_addr);
     if (newsockfd < 0)
       {
-        perror("Socket: error in accept function");
+        perror(ERROR_MSG);
+        /*perror("Socket: error in accept function");*/
         exit(1);
       }
     else
     {
-       printf("Client connected.\n");
+       /*printf("Client connected.\n");*/
     }
 
     /* Start separate threads for read data/stdout & stdin/send data */
@@ -210,7 +213,8 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
 
     if (pthread_create(&readThread, NULL, &readThreadEntry, (void *)&args))
     {
-      perror("Failed to create read thread");
+      perror(ERROR_MSG);
+      /*perror("Failed to create read thread");*/
       exit(1);
     }
 
@@ -243,7 +247,8 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
 
     if(pthread_join(readThread, NULL))
     {
-      perror("Failed to join up read thread");
+      perror(ERROR_MSG);
+      /*perror("Failed to join up read thread");*/
       exit(1);
     }
 
@@ -267,7 +272,7 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
   else
   {
 
-    int clientSocket, clientRecvSocket;
+    int clientSocket;
     struct sockaddr_in * clientAddress;
 
     /* create a proper socket */
@@ -277,7 +282,8 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
       /* create a TCP socket for connecting to the server */
       if ((clientSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
       {
-        perror("Socket: Falied to create client socket");
+        perror(ERROR_MSG);
+        /*perror("Socket: Falied to create client socket");*/
         exit(1);
       }
       fprintf(stdout, "Socket: TCP client created\n");
@@ -287,10 +293,11 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
       /* create a UDP socket */
       if ((clientSocket = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
       {
-        perror("Socket: failed to create client socket");
+        perror(ERROR_MSG);
+        /*perror("Socket: failed to create client socket");*/
         exit(1);
       }
-      fprintf(stdout, "Socket: UDP client created\n");
+      /*fprintf(stdout, "Socket: UDP client created\n");*/
 
     }
  
@@ -304,9 +311,13 @@ printf("Port: %d, Addr: %d\n", serverAddress->sin_port, serverAddress->sin_addr.
       /*printf("About to cast sock\n");*/
       clientAddress = (struct sockaddr_in *)sock;
     } else {
-      printf("Socket: socket not AF_INET\n");
+      /*printf("Socket: socket not AF_INET\n");*/
+      perror(ERROR_MSG);
+      exit(1);
     }
 
+
+/*printf("Port: %d, Addr: %u\n", clientAddress->sin_port, clientAddress->sin_addr.s_addr);*/
     /*memset(&clientAddress, 0, sizeof(clientAddress));
     clientAddress.sin_family = AF_INET;
     clientAddress.sin_addr.s_addr = inet_addr(argv[argc - 2]);*/
@@ -332,9 +343,10 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
   /* try to connect */
   /* SAMTODO: figure out why this fails when passed as args */
     if (connect(clientSocket, (struct sockaddr *) clientAddress,
-                      sizeof(clientAddress)) < 0)
+                      sizeof(*clientAddress)) < 0)
     {
-      perror("Socket: TCP failed to connect client socket.....");
+      perror(ERROR_MSG);
+      /*perror("Socket: TCP failed to connect client socket.....");*/
       exit(1);
     }
 
@@ -342,13 +354,14 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
     
     pthread_t readThread;
     struct arg_struct clientArgs;
-    clientArgs.addr = &clientAddress;
+    clientArgs.addr = clientAddress;
     clientArgs.socketfd = clientSocket;
     clientArgs.tcp = isTCP; 
 
     if (pthread_create(&readThread, NULL, &readThreadEntry, (void *)&clientArgs))
     {
-      perror("Failed to create read thread");
+      perror(ERROR_MSG);
+      /*perror("Failed to create read thread");*/
       exit(1);
     }
 
@@ -418,7 +431,8 @@ void *readThreadEntry(void *arg)
       recv_num_bytes = recv(sock, receiveBuffer, NCBUFFERSIZE, 0);
       if (recv_num_bytes <= 0)
       {
-        perror("Socket: problem reading in buffer");
+        perror(ERROR_MSG);
+        /*perror("Socket: problem reading in buffer");*/
         exit(1);
 
       }
@@ -497,7 +511,8 @@ void *writeThreadEntry(void *arg)
       bytes_sent = send(sock, sendBuffer, (i + 1), 0);
       if (bytes_sent != (i + 1))
       {
-        perror("Socket: TCP client failed to send data");
+        perror(ERROR_MSG);
+        /*perror("Socket: TCP client failed to send data");*/
         exit(1);
       }
       else
@@ -513,7 +528,8 @@ void *writeThreadEntry(void *arg)
       if (sendto(sock, sendBuffer, (i + 1), 0, (struct sockaddr *)&sock_address,
                      sizeof(sock_address)) <0)
       {
-        perror("Socket: UDP failed to connect client socket");
+        perror(ERROR_MSG);
+        /*perror("Socket: UDP failed to connect client socket");*/
         exit(1);
       }
       printf("client sent UDP data\n");
@@ -538,6 +554,9 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
   bool dashS = false;
   int i;
   char * hostString = NULL;
+  if (argc < 3) {
+    return false;
+  }
 
   for (i = 1; (i < argc); ++i)
     {
@@ -626,7 +645,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
           if (sock->sa_family == AF_INET) {
             struct sockaddr_in *sin = (struct sockaddr_in*) sock;
             sin->sin_port = atoi(argv[i]);
-            printf("Port: %d, Addr: %d\n", sin->sin_port, sin->sin_addr.s_addr);
+            printf("Port: %d, Addr: %u\n", sin->sin_port, sin->sin_addr.s_addr);
           } else {
             printf("Error creating sockadd_in");
             exit(1);
@@ -664,18 +683,6 @@ inttrHandler (int num)
   /*TODO*/ printf ("\n");
   /* Free sockaddr made from parse args */
   exit (0);
-}
-
-void *handleSending(void *threadid){
-  /*DEBUG*/
-  printf("I'm trying to handle sending stuff\n");
-  pthread_exit(NULL);
-}
-
-void *handleReceiving(void *threadid){
-  /*DEBUG*/
-  printf("I'm trying to handle receiving stuff\n");
-  pthread_exit(NULL);
 }
 
 bool isNumeric(char *string){
