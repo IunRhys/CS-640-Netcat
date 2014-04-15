@@ -12,15 +12,15 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/types.h>
 
 
 #define USAGE_MSG "invalid or missing options\nusage: snc [-k] [-l] [-u] [-s source_ip_address] [hostname] port\n"
 #define ERROR_MSG "internal error\n"
 
 #define MAXPENDING 5
-#define NCBUFFERSIZE 1025 /* account for \0 + 1024 char possibilities here */
+#define NCBUFFERSIZE 50 /* account for \0 + 1024 char possibilities here */
 #define NUMTHREADS 2
-
 /* Function for parsing the arguments. Returns false if there was an error, *
  * true otherwise.                                                          */
 bool parseArgs (int argc, char * argv[], bool * isClient, bool * keepListening,
@@ -38,7 +38,8 @@ void *writeThreadEntry(void *arg);
 
 /* create a struct for our argument to our newly created posix thread */
 struct arg_struct {
-  struct sockaddr_in *addr;
+  struct sockaddr *addr;
+  socklen_t addr_size;
   bool tcp;
   int socketfd;
   bool isClient;
@@ -67,15 +68,12 @@ main (int argc, char *argv[])
   hints.ai_family = AF_INET;
   hints.ai_socktype = 0;
   hints.ai_protocol = 0;
-  hints.ai_flags = AI_NUMERICSERV;
+  hints.ai_flags = AI_NUMERICSERV & AI_PASSIVE;
   hints.ai_canonname = NULL;
   hints.ai_addr = NULL;
   hints.ai_next = NULL;
 
   /* Parse the argumenets */
-  /*DEBUG*/
-  /*printf("Result before parse: %d\n", (int)result);
-  printf("Point of result: %d\n", (int)&(*result));*/
   error = !parseArgs (argc, argv, &isClient, &keepListening, &isTCP,
     &sourceIPAddress, hostname, &result, &hints);
   if (error)
@@ -84,122 +82,127 @@ main (int argc, char *argv[])
       exit (1);
     }
 
-  /* Set up the interrupt handler action */
-  /*struct sigaction inttrAct;
-  inttrAct.sa_handler = inttrHandler;
-  sigemptyset (&inttrAct.sa_mask);
-  inttrAct.sa_flags = 0;
-
-  if (sigaction (SIGINT, &inttrAct, NULL) < 0)
-    {
-      perror("IS IT HERE?");
-      perror(ERROR_MSG);
-      exit (1);
-    }*/
-
   /* Begin Sam server/client code */
-  
+  /* 
+   *
+   *
+   *
+   *SERVER CODE
+   *
+   *
+   *
+   *
+   *  */
   /* check for -l flag */
   if (!isClient)
   {
     /* SAMTODO: -k option */
     
-    int serverSocket;
-    /* ERIK CHANGING THIS TO POINTER */
-    struct sockaddr_in  * serverAddress;
+    /* bind socket on server to a port */
+    int serverSocket;   
 
+    struct addrinfo *loop_ptr;
 
-    /* Create server socket to bind() to a port */
+    for (loop_ptr = result; loop_ptr != NULL; loop_ptr = loop_ptr->ai_next)
+    {
+      /* Try to create socket */
+      if ((serverSocket = socket(loop_ptr->ai_family, loop_ptr->ai_socktype, loop_ptr->ai_protocol)) == -1)
+      {
+        perror("Socket: failed to create server socket");
+        continue;
+      }
+
+      /* Try to bind */
+
+      if (bind(serverSocket, loop_ptr->ai_addr, loop_ptr->ai_addrlen) == -1)
+      {
+        close(serverSocket);
+        perror("Socket: failed to bind");
+        continue;
+      }
+      break; /* if we get this far, we have successfully created a socket and bound to the address/port */
+
+    }
+
+    if (loop_ptr == NULL)
+    {
+      perror("Socket: failed to create socket and bind");
+      exit(1);
+    }
+
+    /* TODO: WE MAY NEED SOME TYPE OF THIS EVENTUALLY freeaddrinfo(addr_info_ptr);*/
 
     if (isTCP)
     {
-      /* create a TCP socket */
-      if ((serverSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+      if (listen(serverSocket, MAXPENDING) < 0)
       {
-        perror("Socket: Falied to create server socket");
-        perror(ERROR_MSG);
-        
+        perror("Socket: failed to listen on created server socket");
         exit(1);
       }
-      /*fprintf(stdout, "Socket: TCP server socket created\n");*/
+
+      printf("Socket: We are now successfully listening on this port\n");
+
+    }
+
+    struct sockaddr_storage client_addr;
+    socklen_t client_addr_size;
+    int newAcceptSocket;
+
+    client_addr_size = sizeof(client_addr);
+    /* accept a connection if we are on TCP */
+    if (isTCP)
+    {
+      
+      newAcceptSocket = accept(serverSocket, (struct sockaddr *) &client_addr,
+                            &client_addr_size);
+      if (newAcceptSocket < 0)
+        {
+          perror("Socket: error in accept function");
+          exit(1);
+        }
+      else
+      {
+         printf("TCP: Client connected.\n");
+      }
     }
     else
     {
-      /* create a UDP socket */
-      if ((serverSocket = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
+    /* if we are using UDP, we must receive a packet
+     * to populate the sender host information 
+     * before we can send one back */
+      char initialReceiveBuffer[NCBUFFERSIZE];
+      int bytesReceived = 0;
+      if ((bytesReceived = recvfrom(serverSocket, initialReceiveBuffer, NCBUFFERSIZE, 0,
+            (struct sockaddr *)&client_addr, &client_addr_size)) == -1)
       {
-        perror(ERROR_MSG);
-        /*perror("Socket: failed to create server socket");*/
+        perror("initial recvfrom failed");
         exit(1);
       }
-      /*fprintf(stdout, "Socket: UDP server socket created\n");*/
-
-    }
-    /* initialize the socket address struct */
-
-    /* ERIK: INITIALIZE IS ACTUALLY JUST USING THE STRUCTURE FROM THE PARSING */
-
-    struct sockaddr *sock = &(*(result)->ai_addr);
-
-    if(sock->sa_family == AF_INET){
-      /* DEBUG */
-      /*printf("About to cast sock\n");*/
-      serverAddress = (struct sockaddr_in *)sock;
-    } else {
-      perror(ERROR_MSG);
-      exit(1);
-      /*printf("Socket: socket not AF_INET\n");*/
-    }
-    /*memset(&serverAddress, 0, sizeof(serverAddress));
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    serverAddress.sin_port = htons(atoi(argv[argc - 1]));*/
-
-/*printf("Port: %d, Addr: %u\n", serverAddress->sin_port, serverAddress->sin_addr.s_addr);*/
-    
-    /* bind socket on server to a port */
-    if (bind(serverSocket, (struct sockaddr *) serverAddress, sizeof(*serverAddress)) < 0)
-    {
-      perror("Socket: failed to bind server socket");
-      perror(ERROR_MSG);
-      exit(1);
-    }
-
-    if (listen(serverSocket, MAXPENDING) < 0)
-    {
-      perror("Socket: failed to listen on created server socket");
-      perror(ERROR_MSG);
-      exit(1);
-    }
-
-    /*printf("Socket: We are now successfully listening on this port\n");*/
-
-    int newsockfd;
-    unsigned int serv_addr = sizeof(serverAddress);
-    
-    newsockfd = accept(serverSocket, (struct sockaddr *) serverAddress,
-                          &serv_addr);
-    if (newsockfd < 0)
+      if (bytesReceived <=0)
       {
-        perror("Socket: error in accept function");
-        perror(ERROR_MSG);
+        perror("Socket: problem reading in buffer (UDP)");
         exit(1);
       }
-    else
-    {
-       /*printf("Client connected.\n");*/
+      printf("UDP: received %d bytes\n", bytesReceived);
+      printf("Message received (UDP): %s\n", initialReceiveBuffer);
     }
+
 
     /* Start separate threads for read data/stdout & stdin/send data */
     
     pthread_t readThread;
     struct arg_struct args;
-
-    args.addr = serverAddress;
-    args.socketfd = newsockfd;
     args.tcp = isTCP;
     args.isClient = isClient;
     args.keepListening = keepListening; 
+    args.addr = (struct sockaddr *)&client_addr;
+    args.addr_size = client_addr_size;
+    if (isTCP)
+    { args.socketfd = newAcceptSocket; }
+    else
+    { args.socketfd = serverSocket; }
+ 
+
 
     if (pthread_create(&readThread, NULL, &readThreadEntry, (void *)&args))
     {
@@ -245,76 +248,46 @@ main (int argc, char *argv[])
   {
 
     int clientSocket;
-    struct sockaddr_in * clientAddress;
 
-    /* create a proper socket */
+    struct addrinfo *loop_ptr;
 
-    if (isTCP)
+    for (loop_ptr = result; loop_ptr != NULL; loop_ptr = loop_ptr->ai_next)
     {
-      /* create a TCP socket for connecting to the server */
-      if ((clientSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
-      {
-        perror("Socket: Falied to create client socket");
-        perror(ERROR_MSG);
-        exit(1);
-      }
-      fprintf(stdout, "Socket: TCP client created\n");
-    } 
-    else
-    {
-      /* create a UDP socket */
-      if ((clientSocket = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
+      /* Try to create socket */
+      if ((clientSocket = socket(loop_ptr->ai_family, loop_ptr->ai_socktype, loop_ptr->ai_protocol)) == -1)
       {
         perror("Socket: failed to create client socket");
-        perror(ERROR_MSG);
-        exit(1);
+        continue;
       }
-      /*fprintf(stdout, "Socket: UDP client created\n");*/
-
+      
+      if (isTCP)
+      {
+        /* try to connect to our server */
+        if (connect(clientSocket, loop_ptr->ai_addr, loop_ptr->ai_addrlen) == -1)
+        {
+          close(clientSocket);
+          perror("socket: failed to connect client");
+          continue;
+      
+        }
+      }
+      break;
     }
- 
-    /* create server sockaddr_in structure */
-    /*ERIK ATTEMPTING TO EDIT THIS*/
-
-    struct sockaddr *sock = &(*(result)->ai_addr);
-
-    if(sock->sa_family == AF_INET){
-      /* DEBUG */
-      /*printf("About to cast sock\n");*/
-      clientAddress = (struct sockaddr_in *)sock;
-    } else {
-      /*printf("Socket: socket not AF_INET\n");*/
-      perror(ERROR_MSG);
-      exit(1);
-    }
-
-    /*ERIK ATTEMPTING TO EDIT THIS
-
-     SAMTODO: make sure we close this connection instantly if we the other 
-     * server has gone down */
-
-    struct arg_struct args;
-    args.addr = clientAddress;
-    args.socketfd = clientSocket;
-    args.tcp = isTCP;
-    args.isClient = isClient;
-    args.keepListening = keepListening;  
-
-  /* try to connect */
-  /* SAMTODO: figure out why this fails when passed as args */
-    if (connect(clientSocket, (struct sockaddr *) clientAddress,
-                      sizeof(*clientAddress)) < 0)
+    
+    if (loop_ptr == NULL)
     {
-      perror("Socket: TCP failed to connect client socket.....");
-      perror(ERROR_MSG);
+      perror("socket: failed to create and/or connect on client");
       exit(1);
-    }
+    } 
 
-    /* Start separate threads for read data/stdout & stdin/send data */
+    /* TODO: WE MAY WANT THIS IN ONE WAY OR ANOTHER freeaddrinfo(addr_info_ptr);*/
+
+   /* Start separate threads for read data/stdout & stdin/send data */
     
     pthread_t readThread;
     struct arg_struct clientArgs;
-    clientArgs.addr = clientAddress;
+    clientArgs.addr = loop_ptr->ai_addr;
+    clientArgs.addr_size = loop_ptr->ai_addrlen;
     clientArgs.socketfd = clientSocket;
     clientArgs.tcp = isTCP; 
     clientArgs.isClient = isClient;
@@ -332,7 +305,7 @@ main (int argc, char *argv[])
     void * (*writeThreadPtr)(void *);
     writeThreadPtr = &writeThreadEntry;
 
-    (*writeThreadPtr)((void *)&args);
+    (*writeThreadPtr)((void *)&clientArgs);
 
     fprintf(stdout, "\n");
     close(clientSocket);
@@ -340,32 +313,8 @@ main (int argc, char *argv[])
     exit(0);
   }
 
+  /*pthread_exit(NULL);*/
 
-
-  
-  /*TODO*/
-    /* Handling ctrl + d:
-       if (!isTCP) {
-       //stop reading and sending; continue to recieve
-       } else {
-       if (keepListening){
-       //close connection; wait for new connection
-       } else {
-       //close connection; if opposite side closes, exit
-       }
-       } 
-     */
-
-    /*while (true)
-    {
-
-    }*/
-
-  pthread_exit(NULL);
-  /* Handle if the other side terminates */
-  /* Read text from stdin */
-  /* Send when enter is pressed */
-  /* When data is received, output to stdout */
 }
 
 
@@ -375,7 +324,6 @@ void *readThreadEntry(void *arg)
   struct arg_struct *args = (struct arg_struct *)arg;
 
   int sock = args->socketfd;
-  struct sockaddr_in *sock_address = args->addr;
   bool isTCP = args->tcp;
 
   char receiveBuffer[NCBUFFERSIZE];
@@ -407,31 +355,31 @@ void *readThreadEntry(void *arg)
       printf("Message received: %s\n", receiveBuffer);
     }
   }
-
   else /* UDP steps */
-  {
-
-    /* SAMTODO: have this ready for unlimited messages reading */
-
-    unsigned int serv_addr = sizeof(sock_address);
-    int bytesReceived = recvfrom(sock, receiveBuffer, NCBUFFERSIZE, 0,
-                          (struct sockaddr *) &sock_address, &serv_addr);
-
-    printf("UDP: received %d bytes\n", bytesReceived);
-    if (bytesReceived > 0)
+  { 
+    while (true)
     {
-      receiveBuffer[bytesReceived] = '\0';
-      printf("Message received (UDP): %s\n", receiveBuffer);
-    } else if (receiveBuffer[0] == 0xffffffff){
+      /* SAMTODO: have this ready for unlimited messages reading */
+      bzero(receiveBuffer, NCBUFFERSIZE);
+      int bytesReceived = recvfrom(sock, receiveBuffer, NCBUFFERSIZE, 0,
+                            NULL, NULL);
+      if (bytesReceived <=0)
+      {
+        perror("Socket: problem reading in buffer (UDP)");
+        exit(1);
+      } else if (receiveBuffer[0] == 0xffffffff){
         /* Other side terminated */
         printf("We got a 0xffffffff");
         inttrHandler(0);
         /* 
            do something different than execute?
         } */
-    }
+      }
+      printf("UDP: received %d bytes\n", bytesReceived);
+      printf("Message received (UDP): %s\n", receiveBuffer); 
   }
   return NULL;
+}
 }
 
 /* Model a write function on the readentrypoint */
@@ -442,7 +390,8 @@ void *writeThreadEntry(void *arg)
   struct arg_struct *args = (struct arg_struct *)arg;
 
   int sock = args->socketfd;
-  struct sockaddr_in *sock_address = args->addr;
+  struct sockaddr *client_addr = args->addr;
+  socklen_t client_addr_size = args->addr_size;
   bool isTCP = args->tcp;
 
   char sendBuffer[NCBUFFERSIZE];
@@ -451,6 +400,7 @@ void *writeThreadEntry(void *arg)
 
   while (1)
   {
+    bzero(sendBuffer, NCBUFFERSIZE);
     for (i = 0; i <= (NCBUFFERSIZE - 1); i++) /* account for \0 in string */
     {
       sendBuffer[i] = fgetc(stdin);
@@ -467,7 +417,7 @@ void *writeThreadEntry(void *arg)
       }
     }
     /* I'm pretty sure this line causes some trouble, but I don't remember what I found that this affected */
-    sendBuffer[i+1] = '\0';
+   sendBuffer[i+1] = '\0';
 
     /* send the msg */
     /* begin TCP client code */
@@ -492,9 +442,8 @@ void *writeThreadEntry(void *arg)
     }
     else
     {
-
-      if (sendto(sock, sendBuffer, (i + 1), 0, (struct sockaddr *)&sock_address,
-                     sizeof(sock_address)) <0)
+      if (sendto(sock, sendBuffer, (i + 1), 0, client_addr,
+                     client_addr_size) < 0)
       {
         perror(ERROR_MSG);
         /*perror("Socket: UDP failed to connect client socket");*/
@@ -503,7 +452,7 @@ void *writeThreadEntry(void *arg)
       printf("client sent UDP data\n");
     }
   }
-
+  
   return NULL;
 }
 
@@ -604,6 +553,20 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
             printf("Port is not numeric\n");
           }
  
+         if (isTCP)
+         {
+           (*(result))->ai_socktype = SOCK_STREAM;
+         }
+         else
+         {
+           (*(result))->ai_socktype = SOCK_DGRAM;
+         }
+
+
+
+
+
+
           /*DEBUG*/
     /*printf("Parse Result: %d\n", (int)result);
     printf("Parse *result: %d\n", (int)*result);
