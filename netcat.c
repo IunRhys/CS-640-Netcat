@@ -178,12 +178,20 @@ main (int argc, char *argv[])
      * to populate the sender host information 
      * before we can send one back */
       char initialReceiveBuffer[NCBUFFERSIZE];
-      if (recvfrom(serverSocket, initialReceiveBuffer, NCBUFFERSIZE, 0,
-            (struct sockaddr *)&client_addr, &client_addr_size) == -1)
+      int bytesReceived = 0;
+      if ((bytesReceived = recvfrom(serverSocket, initialReceiveBuffer, NCBUFFERSIZE, 0,
+            (struct sockaddr *)&client_addr, &client_addr_size)) == -1)
       {
         perror("initial recvfrom failed");
         exit(1);
       }
+      if (bytesReceived <=0)
+      {
+        perror("Socket: problem reading in buffer (UDP)");
+        exit(1);
+      }
+      printf("UDP: received %d bytes\n", bytesReceived);
+      printf("Message received (UDP): %s\n", initialReceiveBuffer);
     }
 
 
@@ -398,13 +406,14 @@ void *readThreadEntry(void *arg)
       bzero(receiveBuffer, NCBUFFERSIZE);
       int bytesReceived = recvfrom(sock, receiveBuffer, NCBUFFERSIZE, 0,
                             NULL, NULL);
-
-      printf("UDP: received %d bytes\n", bytesReceived);
-      if (bytesReceived > 0)
+      if (bytesReceived <=0)
       {
-        receiveBuffer[bytesReceived] = '\0';
-        printf("Message received (UDP): %s\n", receiveBuffer);
+        perror("Socket: problem reading in buffer (UDP)");
+        exit(1);
       }
+      printf("UDP: received %d bytes\n", bytesReceived);
+      printf("Message received (UDP): %s\n", receiveBuffer);
+      
     }
   }
   return NULL;
