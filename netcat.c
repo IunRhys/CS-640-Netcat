@@ -469,6 +469,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
   bool dashS = false;
   int i;
   char * hostString = NULL;
+  char * dashSNum = NULL;
   if (argc < 3) {
     return false;
   }
@@ -507,6 +508,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
                   /*DEBUG*/
                   printf("Provided -s IP address cannot be converted\n");
                 }
+              dashSNum = argv[i];
 	      dashS = true;
 	    }
 	  else
@@ -535,11 +537,12 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
       else if (i == argc - 1)
 	{
           int err;
-          /*DEBUG*/
-          printf("Port Wanted: %s,%d\n", argv[i], atoi(argv[i]));
-          /*TODO*/
-          /*Figure out why getaddrinfo returns not desired port*/
-          err = getaddrinfo(hostString, argv[i], hints, result);
+          if(dashS){
+            hints->ai_flags = AI_NUMERICSERV;
+            err = getaddrinfo(hostString, dashSNum, hints, result);
+          } else {
+            err = getaddrinfo(hostString, argv[i], hints, result);
+          }
           if (err != 0){
             error = true;
             printf("Errors: %s", gai_strerror(err));
