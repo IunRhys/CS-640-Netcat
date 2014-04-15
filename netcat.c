@@ -19,7 +19,7 @@
 #define ERROR_MSG "internal error\n"
 
 #define MAXPENDING 5
-#define NCBUFFERSIZE 50 /* account for \0 + 1024 char possibilities here */
+#define NCBUFFERSIZE 1024 /* account for \0 + 1024 char possibilities here */
 #define NUMTHREADS 2
 /* Function for parsing the arguments. Returns false if there was an error, *
  * true otherwise.                                                          */
@@ -30,8 +30,6 @@ bool parseArgs (int argc, char * argv[], bool * isClient, bool * keepListening,
 
 /* Handler function of the interruption signal */
 void inttrHandler (int num);
-
-bool isNumeric(char *string);
 
 void *readThreadEntry(void *);
 void *writeThreadEntry(void *arg);
@@ -130,7 +128,7 @@ main (int argc, char *argv[])
       exit(1);
     }
 
-    /* TODO: WE MAY NEED SOME TYPE OF THIS EVENTUALLY freeaddrinfo(addr_info_ptr);*/
+    freeaddrinfo(result);
 
     if (isTCP)
     {
@@ -280,7 +278,7 @@ main (int argc, char *argv[])
       exit(1);
     } 
 
-    /* TODO: WE MAY WANT THIS IN ONE WAY OR ANOTHER freeaddrinfo(addr_info_ptr);*/
+    freeaddrinfo(result);
 
    /* Start separate threads for read data/stdout & stdin/send data */
     
@@ -547,11 +545,6 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
             printf("Errors: %s", gai_strerror(err));
             printf("Error processing host/port\n");
           }
-          err = !isNumeric(argv[i]);
-          if (err){
-            error = true;
-            printf("Port is not numeric\n");
-          }
  
          if (isTCP)
          {
@@ -561,31 +554,6 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
          {
            (*(result))->ai_socktype = SOCK_DGRAM;
          }
-
-
-
-
-
-
-          /*DEBUG*/
-    /*printf("Parse Result: %d\n", (int)result);
-    printf("Parse *result: %d\n", (int)*result);
-    printf("Parse ai_addr: %d\n", (int)&(*(result))->ai_addr);*/
-          struct sockaddr *sock = &(*(*(result))->ai_addr);
-    /*printf("sock: %d\n", (int)sock);*/
-          if (sock->sa_family == AF_INET) {
-            struct sockaddr_in *sin = (struct sockaddr_in*) sock;
-            sin->sin_port = atoi(argv[i]);
-            printf("Port: %d, Addr: %u\n", sin->sin_port, sin->sin_addr.s_addr);
-          } else {
-            printf("Error creating sockadd_in");
-            exit(1);
-          }
-	   /*TODO*/
-           /*FREE THIS STRUCTURE*/
-
-          /*DEBUG*/ 
-          /*printf ("Port processed\n");*/
 	}
       /* This option doesn't exist */
       else
@@ -616,15 +584,4 @@ inttrHandler (int num)
   /* Free sockaddr made from parse args */
   keepGoing = false;
   /*exit (0);*/
-}
-
-bool isNumeric(char *string){
-  while(*string){
-    if (!isdigit(*string))
-      return false;
-    else
-      ++string;
-  }
-
-  return true;
 }
