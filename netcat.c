@@ -46,6 +46,10 @@ struct arg_struct {
 
 volatile bool keepGoing = true;
 
+/* global variable for breaking out of the while and for loop for character input */
+
+bool breakInputLoop = false;
+
 /*****************************************************************************
  * Main                                                                      *
  *****************************************************************************/
@@ -147,7 +151,7 @@ main (int argc, char *argv[])
     int newAcceptSocket;
 
     client_addr_size = sizeof(client_addr);
-    /* accept a connection if we are on TCP */
+    /* accept a connection if we are on TCP - this should also disable further connections from happening */
     if (isTCP)
     {
       
@@ -185,9 +189,7 @@ main (int argc, char *argv[])
       printf("Message received (UDP): %s\n", initialReceiveBuffer);
     }
 
-
     /* Start separate threads for read data/stdout & stdin/send data */
-    
     pthread_t readThread;
     struct arg_struct args;
     args.tcp = isTCP;
@@ -199,8 +201,6 @@ main (int argc, char *argv[])
     { args.socketfd = newAcceptSocket; }
     else
     { args.socketfd = serverSocket; }
- 
-
 
     if (pthread_create(&readThread, NULL, &readThreadEntry, (void *)&args))
     {
@@ -214,21 +214,18 @@ main (int argc, char *argv[])
     writeThreadPtr = &writeThreadEntry;
 
     (*writeThreadPtr)((void *)&args);
-
-
-    if(pthread_join(readThread, NULL))
+    close(serverSocket);
+    //close(newAcceptSocket);
+   
+    /*if(pthread_join(readThread, NULL))
     {
       perror("Failed to join up read thread");
       perror(ERROR_MSG);
       exit(1);
-    }
+    }*/
 
-    while(keepGoing){}
-
-    close(serverSocket);
-    fprintf(stdout, "\n");
-    exit(1);
-
+   fprintf(stdout, "exiting\n");
+    return 0;
   } /*
      *
      *
@@ -305,16 +302,17 @@ main (int argc, char *argv[])
 
     (*writeThreadPtr)((void *)&clientArgs);
 
-    fprintf(stdout, "\n");
     close(clientSocket);
-    pthread_exit(NULL);
-    exit(0);
+   /* 
+    if(pthread_join(readThread, NULL))
+    {
+      perror("Failed to join up read thread");
+      perror(ERROR_MSG);
+      exit(1);
+    }*/
+    return 0;
   }
-
-  /*pthread_exit(NULL);*/
-
 }
-
 
 void *readThreadEntry(void *arg)
 {
@@ -334,21 +332,41 @@ void *readThreadEntry(void *arg)
     {
       bzero(receiveBuffer, NCBUFFERSIZE);
       recv_num_bytes = recv(sock, receiveBuffer, NCBUFFERSIZE, 0);
-      if (recv_num_bytes <= 0)
+      if (recv_num_bytes == 0) /* connection has been terminated */
       {
-        perror("Socket: problem reading in buffer");
+        perror("Socket: closed connection");
         perror(ERROR_MSG);
+        breakInputLoop = true;
+        return NULL; /* should exit the function and be joined back in at main() */
+      }
+      else if (recv_num_bytes == -1)
+      {
+        perror("Socket: recv error");
         exit(1);
+      }
+ 
+      /* SAMTODO: fix this 
+      if (receiveBuffer[0] == EOF){
+        printf("We got EOF over recv");
+        rerurn NULL;        
+      } */
 
-      } else if (receiveBuffer[0] == 0xffffffff){
-        /* Other side terminated */
-        printf("We got a 0xffffffff");
-        
-        if(args->keepListening && !args->isClient){
-        } else {
-          inttrHandler(0);
+      /* As a precaution, make sure there is always a null character that follows the last received character
+       * or replace the last character if 1025 bytes are received */
+       
+      if (recv_num_bytes < NCBUFFERSIZE)
+      {
+        if (receiveBuffer[recv_num_bytes - 1] != '\0')
+        {
+          receiveBuffer[recv_num_bytes] = '\0';
         }
       }
+
+      if (recv_num_bytes == NCBUFFERSIZE)
+      {
+        receiveBuffer[NCBUFFERSIZE - 1] = '\0';
+      }
+       
       printf("Bytes received: %d\n", recv_num_bytes);
       printf("Message received: %s\n", receiveBuffer);
     }
@@ -394,28 +412,57 @@ void *writeThreadEntry(void *arg)
 
   char sendBuffer[NCBUFFERSIZE];
 
-  int i, bytes_sent;
+  int i, input, bytes_to_send, bytes_sent;
 
   while (1)
   {
+    bytes_to_send = 0;
+    input = 0;
     bzero(sendBuffer, NCBUFFERSIZE);
-    for (i = 0; i <= (NCBUFFERSIZE - 1); i++) /* account for \0 in string */
+    for (i = 0; i < (NCBUFFERSIZE - 1); i++) /* account for \0 in string */
     {
-      sendBuffer[i] = fgetc(stdin);
-/* SAMTODO: should we check for EOF here? */
-      if (sendBuffer[i] == '\n')
+      if (breakInputLoop)
       {
-        sendBuffer[i] = '\0';
-        break;
-      } else if (sendBuffer[i] == 0xffffffff){
+        return NULL;
+      }
+      input = getchar();
+      if (input == EOF) {
+        printf("EOF spotted.");
+        close(sock);
+        return NULL;
         /* Send out and terminate */
         /*sendBuffer[i] = '\0';*/
-        inttrHandler(0);
+        /*inttrHandler(0);
+        break;*/
+      }
+      
+      else if (input == '\n')
+      {
+        sendBuffer[i] = '\0';
+        bytes_to_send = i + 1;
         break;
       }
+      else
+      {
+        sendBuffer[i] = (char)input;
+      }
+
     }
-    /* I'm pretty sure this line causes some trouble, but I don't remember what I found that this affected */
-   sendBuffer[i+1] = '\0';
+   
+    if (i == (NCBUFFERSIZE - 1)) /* we have max input in the buffer */
+    {
+      sendBuffer[NCBUFFERSIZE - 1] = '\0';
+      bytes_to_send = NCBUFFERSIZE;
+    }
+
+    if (bytes_to_send == 1)
+    {
+      if (sendBuffer[0] == '\0')
+      {
+        /* nothing to send */
+        continue;
+      }
+    }
 
     /* send the msg */
     /* begin TCP client code */
@@ -424,7 +471,7 @@ void *writeThreadEntry(void *arg)
 
     {
       /* send a piece of data to the server */
-      bytes_sent = send(sock, sendBuffer, (i + 1), 0);
+      bytes_sent = send(sock, sendBuffer, bytes_to_send, 0);
       if (bytes_sent != (i + 1))
       {
         perror("Socket: TCP client failed to send data");
@@ -440,7 +487,7 @@ void *writeThreadEntry(void *arg)
     }
     else
     {
-      if (sendto(sock, sendBuffer, (i + 1), 0, client_addr,
+      if (sendto(sock, sendBuffer, bytes_to_send, 0, client_addr,
                      client_addr_size) < 0)
       {
         perror(ERROR_MSG);
