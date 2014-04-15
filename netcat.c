@@ -41,9 +41,11 @@ struct arg_struct {
   struct sockaddr_in *addr;
   bool tcp;
   int socketfd;
+  bool isClient;
+  bool keepListening;
 };
 
-
+volatile bool keepGoing = true;
 
 /*****************************************************************************
  * Main                                                                      *
@@ -55,9 +57,7 @@ main (int argc, char *argv[])
   bool keepListening = false;
   bool isTCP = true;
   bool error;
-  /*pthread_t threads[NUMTHREADS];*/
   struct in_addr sourceIPAddress;
-  /*DEBUG: figure out how I really want to do this...*/
   char * hostname = NULL;
   struct addrinfo * result = malloc(sizeof(struct addrinfo));
   struct addrinfo hints;
@@ -85,28 +85,17 @@ main (int argc, char *argv[])
     }
 
   /* Set up the interrupt handler action */
-  struct sigaction inttrAct;
+  /*struct sigaction inttrAct;
   inttrAct.sa_handler = inttrHandler;
   sigemptyset (&inttrAct.sa_mask);
   inttrAct.sa_flags = 0;
 
   if (sigaction (SIGINT, &inttrAct, NULL) < 0)
     {
+      perror("IS IT HERE?");
       perror(ERROR_MSG);
       exit (1);
-    }
-
-  /*int rc = pthread_create(&threads[0], NULL, handleReceiving, (void *)0);
-  if (rc != 0){
-    printf("Error creating receiving thread");
-    exit(1);
-  }
-
-  int rc2 = pthread_create(&threads[1], NULL, handleSending, (void *)1);
-  if (rc2 != 0){
-    printf("Error creating sending thread");
-    exit(1);
-  }*/
+    }*/
 
   /* Begin Sam server/client code */
   
@@ -114,8 +103,6 @@ main (int argc, char *argv[])
   if (!isClient)
   {
     /* SAMTODO: -k option */
-    
-    /* SAMTODO: check for [hostname] field of argv parameters */
     
     int serverSocket;
     /* ERIK CHANGING THIS TO POINTER */
@@ -129,8 +116,9 @@ main (int argc, char *argv[])
       /* create a TCP socket */
       if ((serverSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
       {
+        perror("Socket: Falied to create server socket");
         perror(ERROR_MSG);
-        /*perror("Socket: Falied to create server socket");*/
+        
         exit(1);
       }
       /*fprintf(stdout, "Socket: TCP server socket created\n");*/
@@ -172,15 +160,15 @@ main (int argc, char *argv[])
     /* bind socket on server to a port */
     if (bind(serverSocket, (struct sockaddr *) serverAddress, sizeof(*serverAddress)) < 0)
     {
+      perror("Socket: failed to bind server socket");
       perror(ERROR_MSG);
-      /*perror("Socket: failed to bind server socket");*/
       exit(1);
     }
 
     if (listen(serverSocket, MAXPENDING) < 0)
     {
+      perror("Socket: failed to listen on created server socket");
       perror(ERROR_MSG);
-      /*perror("Socket: failed to listen on created server socket");*/
       exit(1);
     }
 
@@ -193,8 +181,8 @@ main (int argc, char *argv[])
                           &serv_addr);
     if (newsockfd < 0)
       {
+        perror("Socket: error in accept function");
         perror(ERROR_MSG);
-        /*perror("Socket: error in accept function");*/
         exit(1);
       }
     else
@@ -209,34 +197,16 @@ main (int argc, char *argv[])
 
     args.addr = serverAddress;
     args.socketfd = newsockfd;
-    args.tcp = isTCP; 
+    args.tcp = isTCP;
+    args.isClient = isClient;
+    args.keepListening = keepListening; 
 
     if (pthread_create(&readThread, NULL, &readThreadEntry, (void *)&args))
     {
+      perror("Failed to create read thread");
       perror(ERROR_MSG);
-      /*perror("Failed to create read thread");*/
       exit(1);
     }
-
-    /* create a separate socket for sending 
-
-    int serverSendSocket;
-    if ((serverSendSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
-      {
-        perror("Socket: Falied to create server socket");
-        exit(1);
-      }
-      fprintf(stdout, "Socket: TCP server 2 socket created\n");
-
-    if (connect(serverSendSocket, (struct sockaddr *) serverAddress,
-                      sizeof(*serverAddress)) < 0)
-    {
-      perror("Socket: TCP failed to connect server socket.....");
-      exit(1);
-    }
-    
-    */
-
 
     /* begin reading in output */
     void * (*writeThreadPtr)(void *);
@@ -247,10 +217,12 @@ main (int argc, char *argv[])
 
     if(pthread_join(readThread, NULL))
     {
+      perror("Failed to join up read thread");
       perror(ERROR_MSG);
-      /*perror("Failed to join up read thread");*/
       exit(1);
     }
+
+    while(keepGoing){}
 
     close(serverSocket);
     fprintf(stdout, "\n");
@@ -282,8 +254,8 @@ main (int argc, char *argv[])
       /* create a TCP socket for connecting to the server */
       if ((clientSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
       {
+        perror("Socket: Falied to create client socket");
         perror(ERROR_MSG);
-        /*perror("Socket: Falied to create client socket");*/
         exit(1);
       }
       fprintf(stdout, "Socket: TCP client created\n");
@@ -293,8 +265,8 @@ main (int argc, char *argv[])
       /* create a UDP socket */
       if ((clientSocket = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
       {
+        perror("Socket: failed to create client socket");
         perror(ERROR_MSG);
-        /*perror("Socket: failed to create client socket");*/
         exit(1);
       }
       /*fprintf(stdout, "Socket: UDP client created\n");*/
@@ -316,37 +288,25 @@ main (int argc, char *argv[])
       exit(1);
     }
 
-
-/*printf("Port: %d, Addr: %u\n", clientAddress->sin_port, clientAddress->sin_addr.s_addr);*/
-    /*memset(&clientAddress, 0, sizeof(clientAddress));
-    clientAddress.sin_family = AF_INET;
-    clientAddress.sin_addr.s_addr = inet_addr(argv[argc - 2]);*/
-
-    /* SAMTODO: use inet_ntoa to check if valid ip... if not, do a lookup */
-    /*
-
-net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
-
-    */
-
     /*ERIK ATTEMPTING TO EDIT THIS
-    clientAddress.sin_port = htons(atoi(argv[argc - 1]));*/
 
-    /* SAMTODO: make sure we close this connection instantly if we the other 
+     SAMTODO: make sure we close this connection instantly if we the other 
      * server has gone down */
 
     struct arg_struct args;
     args.addr = clientAddress;
     args.socketfd = clientSocket;
-    args.tcp = isTCP; 
+    args.tcp = isTCP;
+    args.isClient = isClient;
+    args.keepListening = keepListening;  
 
   /* try to connect */
   /* SAMTODO: figure out why this fails when passed as args */
     if (connect(clientSocket, (struct sockaddr *) clientAddress,
                       sizeof(*clientAddress)) < 0)
     {
+      perror("Socket: TCP failed to connect client socket.....");
       perror(ERROR_MSG);
-      /*perror("Socket: TCP failed to connect client socket.....");*/
       exit(1);
     }
 
@@ -357,11 +317,13 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
     clientArgs.addr = clientAddress;
     clientArgs.socketfd = clientSocket;
     clientArgs.tcp = isTCP; 
+    clientArgs.isClient = isClient;
+    clientArgs.keepListening = keepListening; 
 
     if (pthread_create(&readThread, NULL, &readThreadEntry, (void *)&clientArgs))
     {
+      perror("Failed to create read thread");
       perror(ERROR_MSG);
-      /*perror("Failed to create read thread");*/
       exit(1);
     }
 
@@ -374,6 +336,7 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
 
     fprintf(stdout, "\n");
     close(clientSocket);
+    pthread_exit(NULL);
     exit(0);
   }
 
@@ -381,10 +344,6 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
 
   
   /*TODO*/
-    /* Set up socket(s?) with information gained from arguments */
-    /* Set up sigaction for handling ctrl+d; this isn't a sigaction
-       thing actually, ctrl+d sends EOF to us. So if we see EOF while
-       reading input, do our handling things. */
     /* Handling ctrl + d:
        if (!isTCP) {
        //stop reading and sending; continue to recieve
@@ -431,10 +390,18 @@ void *readThreadEntry(void *arg)
       recv_num_bytes = recv(sock, receiveBuffer, NCBUFFERSIZE, 0);
       if (recv_num_bytes <= 0)
       {
+        perror("Socket: problem reading in buffer");
         perror(ERROR_MSG);
-        /*perror("Socket: problem reading in buffer");*/
         exit(1);
 
+      } else if (receiveBuffer[0] == 0xffffffff){
+        /* Other side terminated */
+        printf("We got a 0xffffffff");
+        
+        if(args->keepListening && !args->isClient){
+        } else {
+          inttrHandler(0);
+        }
       }
       printf("Bytes received: %d\n", recv_num_bytes);
       printf("Message received: %s\n", receiveBuffer);
@@ -455,6 +422,13 @@ void *readThreadEntry(void *arg)
     {
       receiveBuffer[bytesReceived] = '\0';
       printf("Message received (UDP): %s\n", receiveBuffer);
+    } else if (receiveBuffer[0] == 0xffffffff){
+        /* Other side terminated */
+        printf("We got a 0xffffffff");
+        inttrHandler(0);
+        /* 
+           do something different than execute?
+        } */
     }
   }
   return NULL;
@@ -472,18 +446,6 @@ void *writeThreadEntry(void *arg)
   bool isTCP = args->tcp;
 
   char sendBuffer[NCBUFFERSIZE];
- 
-  /* try to connect 
-  if (connect(sock, (struct sockaddr *) &sock_address,
-                      sizeof(sock_address)) < 0)
- {
-    perror("Socket: TCP failed to connect client socket.....");
-    exit(1);
-  }
-  */
- 
-  /* start polling for user input and enter characters as they are entered into
-   * the buffer*/
 
   int i, bytes_sent;
 
@@ -497,8 +459,14 @@ void *writeThreadEntry(void *arg)
       {
         sendBuffer[i] = '\0';
         break;
+      } else if (sendBuffer[i] == 0xffffffff){
+        /* Send out and terminate */
+        /*sendBuffer[i] = '\0';*/
+        inttrHandler(0);
+        break;
       }
     }
+    /* I'm pretty sure this line causes some trouble, but I don't remember what I found that this affected */
     sendBuffer[i+1] = '\0';
 
     /* send the msg */
@@ -511,8 +479,8 @@ void *writeThreadEntry(void *arg)
       bytes_sent = send(sock, sendBuffer, (i + 1), 0);
       if (bytes_sent != (i + 1))
       {
+        perror("Socket: TCP client failed to send data");
         perror(ERROR_MSG);
-        /*perror("Socket: TCP client failed to send data");*/
         exit(1);
       }
       else
@@ -654,7 +622,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
            /*FREE THIS STRUCTURE*/
 
           /*DEBUG*/ 
-          printf ("Port processed\n");
+          /*printf ("Port processed\n");*/
 	}
       /* This option doesn't exist */
       else
@@ -680,9 +648,11 @@ void
 inttrHandler (int num)
 {
   /*Close Connections */
+  printf("We caught SIGINT\n");
   /*TODO*/ printf ("\n");
   /* Free sockaddr made from parse args */
-  exit (0);
+  keepGoing = false;
+  /*exit (0);*/
 }
 
 bool isNumeric(char *string){
