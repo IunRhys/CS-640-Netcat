@@ -31,7 +31,8 @@ void *writeThreadEntry(void *arg);
 
 /* create a struct for our argument to our newly created posix thread */
 struct arg_struct {
-  struct sockaddr_in *addr;
+  struct sockaddr *addr;
+  socklen_t addr_size;
   bool tcp;
   int socketfd;
 };
@@ -142,18 +143,22 @@ main (int argc, char *argv[])
 
     freeaddrinfo(addr_info_ptr);
 
-    if (listen(serverSocket, MAXPENDING) < 0)
+    if (isTCP)
     {
-      perror("Socket: failed to listen on created server socket");
-      exit(1);
+      if (listen(serverSocket, MAXPENDING) < 0)
+      {
+        perror("Socket: failed to listen on created server socket");
+        exit(1);
+      }
+
+      printf("Socket: We are now successfully listening on this port\n");
+
     }
 
-    printf("Socket: We are now successfully listening on this port\n");
-
+    client_addr_size = sizeof(client_addr);
     /* accept a connection if we are on TCP */
     if (isTCP)
     {
-      client_addr_size = sizeof(client_addr);
       
       newAcceptSocket = accept(serverSocket, (struct sockaddr *) &client_addr,
                             &client_addr_size);
@@ -167,12 +172,27 @@ main (int argc, char *argv[])
          printf("TCP: Client connected.\n");
       }
     }
+    else
+    {
+    /* if we are using UDP, we must receive a packet
+     * to populate the sender host information 
+     * before we can send one back */
+      char initialReceiveBuffer[NCBUFFERSIZE];
+      if (recvfrom(serverSocket, initialReceiveBuffer, NCBUFFERSIZE, 0,
+            (struct sockaddr *)&client_addr, &client_addr_size) == -1)
+      {
+        perror("initial recvfrom failed");
+        exit(1);
+      }
+    }
+
 
     /* Start separate threads for read data/stdout & stdin/send data */
     
     pthread_t readThread;
     struct arg_struct args;
-    args.addr = NULL;
+    args.addr = (struct sockaddr *)&client_addr;
+    args.addr_size = client_addr_size;
     if (isTCP)
     { args.socketfd = newAcceptSocket; }
     else
@@ -252,15 +272,18 @@ main (int argc, char *argv[])
         perror("Socket: failed to create client socket");
         continue;
       }
-
-      /* try to connect to our server */
-      if (connect(clientSocket, loop_ptr->ai_addr, loop_ptr->ai_addrlen) == -1)
+      
+      if (isTCP)
       {
-        close(clientSocket);
-        perror("socket: failed to connect client");
-        continue;
+        /* try to connect to our server */
+        if (connect(clientSocket, loop_ptr->ai_addr, loop_ptr->ai_addrlen) == -1)
+        {
+          close(clientSocket);
+          perror("socket: failed to connect client");
+          continue;
+      
+        }
       }
-
       break;
     }
     
@@ -284,7 +307,8 @@ net_ntoa(*(struct in_addr *)hp->h_addr_list[i]));
     
     pthread_t readThread;
     struct arg_struct clientArgs;
-    clientArgs.addr = NULL;
+    clientArgs.addr = loop_ptr->ai_addr;
+    clientArgs.addr_size = loop_ptr->ai_addrlen;
     clientArgs.socketfd = clientSocket;
     clientArgs.tcp = isTCP; 
 
@@ -342,7 +366,8 @@ void *readThreadEntry(void *arg)
   struct arg_struct *args = (struct arg_struct *)arg;
 
   int sock = args->socketfd;
-  struct sockaddr_in *sock_address = args->addr;
+  struct sockaddr *client_addr = NULL; 
+  socklen_t client_addr_size = 0;
   bool isTCP = args->tcp;
 
   char receiveBuffer[NCBUFFERSIZE];
@@ -367,7 +392,6 @@ void *readThreadEntry(void *arg)
   }
   else /* UDP steps */
   { 
-   // unsigned int serv_addr = sizeof(sock_address);
     while (true)
     {
       /* SAMTODO: have this ready for unlimited messages reading */
@@ -394,7 +418,8 @@ void *writeThreadEntry(void *arg)
   struct arg_struct *args = (struct arg_struct *)arg;
 
   int sock = args->socketfd;
-  struct sockaddr_in *sock_address = args->addr;
+  struct sockaddr *client_addr = args->addr;
+  socklen_t client_addr_size = args->addr_size;
   bool isTCP = args->tcp;
 
   char sendBuffer[NCBUFFERSIZE];
@@ -449,9 +474,8 @@ void *writeThreadEntry(void *arg)
     }
     else
     {
-
-      if (sendto(sock, sendBuffer, (i + 1), 0, (struct sockaddr *)&sock_address,
-                     sizeof(sock_address)) <0)
+      if (sendto(sock, sendBuffer, (i + 1), 0, client_addr,
+                     client_addr_size) < 0)
       {
         perror("Socket: UDP failed to connect client socket");
         exit(1);
