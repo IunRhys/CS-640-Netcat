@@ -142,7 +142,7 @@ main (int argc, char *argv[])
         exit(1);
       }
 
-      printf("Socket: We are now successfully listening on this port\n");
+     /* printf("Socket: We are now successfully listening on this port\n");*/
 
     }
 
@@ -163,7 +163,9 @@ main (int argc, char *argv[])
         }
       else
       {
-         printf("TCP: Client connected.\n");
+      /*
+        printf("TCP: Client connected.\n");
+      */
       }
     }
     else
@@ -184,8 +186,9 @@ main (int argc, char *argv[])
         perror("Socket: problem reading in buffer (UDP)");
         exit(1);
       }
-      printf("UDP: received %d bytes\n", bytesReceived);
-      printf("Message received (UDP): %s\n", initialReceiveBuffer);
+     /* printf("UDP: received %d bytes\n", bytesReceived);
+      printf("Message received (UDP): %s\n", initialReceiveBuffer); */
+      printf("%s\n", initialReceiveBuffer);
     }
 
     /* Start separate threads for read data/stdout & stdin/send data */
@@ -284,7 +287,7 @@ main (int argc, char *argv[])
 
     if (isdashS)
     {  
-      if (bind(clientSocket, dashs_result->ai_addr, dashs_result->ai_addrlen) == -1)
+      if ((bind(clientSocket, dashs_result->ai_addr, dashs_result->ai_addrlen)) == -1)
       {
         close(clientSocket);
         perror("socket: failed to bind client (-s option)");
@@ -396,9 +399,10 @@ void *readThreadEntry(void *arg)
     {
       receiveBuffer[NCBUFFERSIZE - 1] = '\0';
     }
-     
+   /*  
     printf("Bytes received: %d\n", recv_num_bytes);
-    printf("Message received: %s\n", receiveBuffer);
+    printf("Message received: %s\n", receiveBuffer); */
+    printf("%s\n", receiveBuffer);
   }
   
   return NULL;
@@ -435,7 +439,8 @@ void *writeThreadEntry(void *arg)
       input = getchar();
       if (input == EOF)
       {
-        printf("EOF spotted.");
+        /*
+        printf("EOF spotted."); */
         return NULL;
       }
       
@@ -483,9 +488,11 @@ void *writeThreadEntry(void *arg)
       }
       else
       {
+        /*
         printf("client sent TCP data successfully\n");
         printf("bytes sent: %d\n", bytes_sent);
         printf("sent: %s\n", sendBuffer);
+      */
       }
     }
     else
@@ -497,7 +504,7 @@ void *writeThreadEntry(void *arg)
         /*perror("Socket: UDP failed to connect client socket");*/
         exit(1);
       }
-      printf("client sent UDP data\n");
+     /* printf("client sent UDP data\n"); */
     }
   }
   
@@ -539,7 +546,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
 	  *isClient = false;
 
 	  /*DEBUG */
-	  printf ("-l processed\n");
+	  /* printf ("-l processed\n"); */
 	}
 
       /* -s; Set IP_addr to send with */
@@ -557,7 +564,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
                 if (err == 0){
                   error = true;
                   /*DEBUG*/
-                  printf("Provided -s IP address cannot be converted\n");
+                  /* printf("Provided -s IP address cannot be converted\n"); */
                 }
               dashSNum = argv[i];
 	      dashS = true;
@@ -583,7 +590,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
 	{
 	   hostString = argv[i];
            hostname = hostString;
-	   /*DEBUG*/ printf ("hostname processed\n");
+	   // /*DEBUG*/ printf ("hostname processed\n"); 
 	}
       /* Handle port */
       else if (i == argc - 1)
@@ -599,7 +606,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
           }
          
           if(dashS){
-            hints->ai_flags = 0;
+            hints->ai_flags = AI_NUMERICHOST;
             err = getaddrinfo(dashSNum, argv[i], hints, dashs_result);
           }
           if (hostname == NULL)
@@ -615,6 +622,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
           }
           if (err != 0){
             error = true;
+            
             printf("Errors: %s", gai_strerror(err));
             printf("Error processing host/port\n");
           }
