@@ -68,12 +68,7 @@ main (int argc, char *argv[])
   /* Set up the hints for getaddrinfo */
   memset(&hints, 0, sizeof(struct addrinfo));
   hints.ai_family = AF_INET;
-  hints.ai_socktype = 0;
-  hints.ai_protocol = 0;
   hints.ai_flags = AI_NUMERICSERV & AI_PASSIVE;
-  hints.ai_canonname = NULL;
-  hints.ai_addr = NULL;
-  hints.ai_next = NULL;
 
   /* Parse the argumenets */
   error = !parseArgs (argc, argv, &isClient, &keepListening, &isTCP,
@@ -324,79 +319,59 @@ void *readThreadEntry(void *arg)
 
   char receiveBuffer[NCBUFFERSIZE];
   
-  if (isTCP)
+  int recv_num_bytes;
+
+  while (true)
   {
-    int recv_num_bytes;
-
-    while (true)
-    {
-      bzero(receiveBuffer, NCBUFFERSIZE);
+    bzero(receiveBuffer, NCBUFFERSIZE);
+    
+    if (isTCP)
+    { 
       recv_num_bytes = recv(sock, receiveBuffer, NCBUFFERSIZE, 0);
-      if (recv_num_bytes == 0) /* connection has been terminated */
-      {
-        perror("Socket: closed connection");
-        perror(ERROR_MSG);
-        breakInputLoop = true;
-        return NULL; /* should exit the function and be joined back in at main() */
-      }
-      else if (recv_num_bytes == -1)
-      {
-        perror("Socket: recv error");
-        exit(1);
-      }
- 
-      /* SAMTODO: fix this 
-      if (receiveBuffer[0] == EOF){
-        printf("We got EOF over recv");
-        rerurn NULL;        
-      } */
-
-      /* As a precaution, make sure there is always a null character that follows the last received character
-       * or replace the last character if 1025 bytes are received */
-       
-      if (recv_num_bytes < NCBUFFERSIZE)
-      {
-        if (receiveBuffer[recv_num_bytes - 1] != '\0')
-        {
-          receiveBuffer[recv_num_bytes] = '\0';
-        }
-      }
-
-      if (recv_num_bytes == NCBUFFERSIZE)
-      {
-        receiveBuffer[NCBUFFERSIZE - 1] = '\0';
-      }
-       
-      printf("Bytes received: %d\n", recv_num_bytes);
-      printf("Message received: %s\n", receiveBuffer);
     }
-  }
-  else /* UDP steps */
-  { 
-    while (true)
+    else 
+    { 
+      recv_num_bytes = recvfrom(sock, receiveBuffer, NCBUFFERSIZE, 0,
+                          NULL, NULL);
+    }
+
+    if (recv_num_bytes == 0) /* connection has been terminated */
     {
-      /* SAMTODO: have this ready for unlimited messages reading */
-      bzero(receiveBuffer, NCBUFFERSIZE);
-      int bytesReceived = recvfrom(sock, receiveBuffer, NCBUFFERSIZE, 0,
-                            NULL, NULL);
-      if (bytesReceived <=0)
+      perror("Socket: closed connection");
+      perror(ERROR_MSG);
+      breakInputLoop = true;
+      fclose(stdin);
+      return NULL; /* should exit the function and be joined back in at main() */
+    }
+    else if (recv_num_bytes == -1)
+    {
+      perror("Socket: recv error");
+      exit(1);
+    }
+
+    /* As a precaution, make sure there is always a null character that follows the last received character
+     * or replace the last character if 1025 bytes are received */
+     
+    if (recv_num_bytes < NCBUFFERSIZE)
+    {
+      if (receiveBuffer[recv_num_bytes - 1] != '\0')
       {
-        perror("Socket: problem reading in buffer (UDP)");
-        exit(1);
-      } else if (receiveBuffer[0] == 0xffffffff){
-        /* Other side terminated */
-        printf("We got a 0xffffffff");
-        inttrHandler(0);
-        /* 
-           do something different than execute?
-        } */
+        receiveBuffer[recv_num_bytes] = '\0';
       }
-      printf("UDP: received %d bytes\n", bytesReceived);
-      printf("Message received (UDP): %s\n", receiveBuffer); 
+    }
+
+    if (recv_num_bytes == NCBUFFERSIZE)
+    {
+      receiveBuffer[NCBUFFERSIZE - 1] = '\0';
+    }
+     
+    printf("Bytes received: %d\n", recv_num_bytes);
+    printf("Message received: %s\n", receiveBuffer);
   }
+  
   return NULL;
 }
-}
+
 
 /* Model a write function on the readentrypoint */
 /* We may want to use this as a thread later */
@@ -585,10 +560,20 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
 	{
           int err;
           if(dashS){
-            hints->ai_flags = AI_NUMERICSERV;
             err = getaddrinfo(hostString, dashSNum, hints, result);
-          } else {
-            err = getaddrinfo(hostString, argv[i], hints, result);
+          } 
+          else
+          {
+             if (*isTCP)
+             {
+               hints->ai_socktype = SOCK_STREAM;
+             }
+             else
+             {
+               hints->ai_socktype = SOCK_DGRAM;
+             }
+            
+            err = getaddrinfo(NULL, argv[i], hints, result);
           }
           if (err != 0){
             error = true;
@@ -596,15 +581,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
             printf("Error processing host/port\n");
           }
  
-         if (isTCP)
-         {
-           (*(result))->ai_socktype = SOCK_STREAM;
-         }
-         else
-         {
-           (*(result))->ai_socktype = SOCK_DGRAM;
-         }
-	}
+       }
       /* This option doesn't exist */
       else
 	{
