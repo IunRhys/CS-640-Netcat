@@ -151,13 +151,9 @@ main (int argc, char *argv[])
     int newAcceptSocket;
 
     client_addr_size = sizeof(client_addr);
-    /* accept a connection if we are on TCP - this should also disable further connections from happening */
-    do 
-    { /* implementing -k with this do loop */
-
+    /* accept a connection if we are on TCP */
     if (isTCP)
     {
-      
       newAcceptSocket = accept(serverSocket, (struct sockaddr *) &client_addr,
                             &client_addr_size);
       if (newAcceptSocket < 0)
@@ -230,7 +226,6 @@ main (int argc, char *argv[])
       exit(1);
     }
     breakInputLoop = false;
-   } while (keepListening) ;
    
     fprintf(stdout, "\n");
     return 0;
@@ -273,20 +268,29 @@ main (int argc, char *argv[])
           close(clientSocket);
           perror("socket: failed to connect client");
           continue;
-      
         }
       }
       break;
     }
-   
+  
+    if (loop_ptr == NULL)
+    {
+      close(clientSocket);
+      perror("There ere problems creating a client socket and connecting");
+      exit(1);
+    }
+
     /* begin -s code */
 
     if (isdashS)
     {  
-      printf("-s triggered\n");
-      bind(clientSocket, dashs_result->ai_addr, dashs_result->ai_addrlen); 
+      if (bind(clientSocket, dashs_result->ai_addr, dashs_result->ai_addrlen) == -1)
+      {
+        close(clientSocket);
+        perror("socket: failed to bind client (-s option)");
+        exit(1);
+      }
     }
-
 
     if (loop_ptr == NULL)
     {
@@ -597,8 +601,18 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
           if(dashS){
             hints->ai_flags = 0;
             err = getaddrinfo(dashSNum, argv[i], hints, dashs_result);
-          } 
-          err = getaddrinfo(NULL, argv[i], hints, result);
+          }
+          if (hostname == NULL)
+          {
+            hints->ai_flags = AI_PASSIVE;
+            err = getaddrinfo(NULL, argv[i], hints, result);
+          }
+          else
+          {
+            hints->ai_flags = AI_NUMERICSERV;
+            
+            err = getaddrinfo(hostname, argv[i], hints, result);
+          }
           if (err != 0){
             error = true;
             printf("Errors: %s", gai_strerror(err));
