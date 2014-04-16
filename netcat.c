@@ -25,7 +25,8 @@
  * true otherwise.                                                          */
 bool parseArgs (int argc, char * argv[], bool * isClient, bool * keepListening,
 		bool * isTCP, struct in_addr * sourceIPAddress, 
-                char * hostname, struct addrinfo ** result, 
+                char * hostname, bool *isdashS, struct addrinfo ** result,
+                struct addrinfo ** dashs_result,
                 struct addrinfo * hints);
 
 /* Handler function of the interruption signal */
@@ -59,20 +60,24 @@ main (int argc, char *argv[])
   bool isClient = true;
   bool keepListening = false;
   bool isTCP = true;
+  bool isdashS = false;
   bool error;
   struct in_addr sourceIPAddress;
   char * hostname = NULL;
   struct addrinfo * result = malloc(sizeof(struct addrinfo));
+  struct addrinfo * dashs_result = malloc(sizeof(struct addrinfo));
   struct addrinfo hints;
 
   /* Set up the hints for getaddrinfo */
   memset(&hints, 0, sizeof(struct addrinfo));
+  memset(result, 0, sizeof(struct addrinfo));
+  memset(dashs_result, 0, sizeof(struct addrinfo));
   hints.ai_family = AF_INET;
   hints.ai_flags = AI_NUMERICSERV & AI_PASSIVE;
 
   /* Parse the argumenets */
   error = !parseArgs (argc, argv, &isClient, &keepListening, &isTCP,
-    &sourceIPAddress, hostname, &result, &hints);
+    &sourceIPAddress, hostname, &isdashS, &result, &dashs_result,  &hints);
   if (error)
     {
       perror(USAGE_MSG);
@@ -147,6 +152,9 @@ main (int argc, char *argv[])
 
     client_addr_size = sizeof(client_addr);
     /* accept a connection if we are on TCP - this should also disable further connections from happening */
+    do 
+    { /* implementing -k with this do loop */
+
     if (isTCP)
     {
       
@@ -209,19 +217,26 @@ main (int argc, char *argv[])
     writeThreadPtr = &writeThreadEntry;
 
     (*writeThreadPtr)((void *)&args);
-    close(serverSocket);
-    //close(newAcceptSocket);
+    if (!keepListening)
+    {
+      close(serverSocket);
+    }
+    close(newAcceptSocket);
    
-    /*if(pthread_join(readThread, NULL))
+    if(pthread_join(readThread, NULL))
     {
       perror("Failed to join up read thread");
       perror(ERROR_MSG);
       exit(1);
-    }*/
-
-   fprintf(stdout, "exiting\n");
+    }
+    breakInputLoop = false;
+   } while (keepListening) ;
+   
+    fprintf(stdout, "\n");
     return 0;
-  } /*
+
+  } 
+  /*
      *
      *
      *
@@ -263,7 +278,16 @@ main (int argc, char *argv[])
       }
       break;
     }
-    
+   
+    /* begin -s code */
+
+    if (isdashS)
+    {  
+      printf("-s triggered\n");
+      bind(clientSocket, dashs_result->ai_addr, dashs_result->ai_addrlen); 
+    }
+
+
     if (loop_ptr == NULL)
     {
       perror("socket: failed to create and/or connect on client");
@@ -298,16 +322,21 @@ main (int argc, char *argv[])
     (*writeThreadPtr)((void *)&clientArgs);
 
     close(clientSocket);
-   /* 
-    if(pthread_join(readThread, NULL))
+    
+    /* if(pthread_join(readThread, NULL))
     {
       perror("Failed to join up read thread");
       perror(ERROR_MSG);
       exit(1);
-    }*/
+    } */
     return 0;
   }
 }
+
+/****************************************************************
+ * Begin read/write functions
+ *
+ */
 
 void *readThreadEntry(void *arg)
 {
@@ -339,8 +368,7 @@ void *readThreadEntry(void *arg)
     {
       perror("Socket: closed connection");
       perror(ERROR_MSG);
-      breakInputLoop = true;
-      fclose(stdin);
+      breakInputLoop = true; /* make sure the input running on this client or server stops */
       return NULL; /* should exit the function and be joined back in at main() */
     }
     else if (recv_num_bytes == -1)
@@ -401,14 +429,10 @@ void *writeThreadEntry(void *arg)
         return NULL;
       }
       input = getchar();
-      if (input == EOF) {
+      if (input == EOF)
+      {
         printf("EOF spotted.");
-        close(sock);
         return NULL;
-        /* Send out and terminate */
-        /*sendBuffer[i] = '\0';*/
-        /*inttrHandler(0);
-        break;*/
       }
       
       else if (input == '\n')
@@ -484,7 +508,8 @@ void *writeThreadEntry(void *arg)
 bool
 parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
 	   bool * isTCP, struct in_addr * sourceIPAddress,
-           char * hostname, struct addrinfo ** result, struct addrinfo * hints)
+           char * hostname, bool *isdashS, struct addrinfo ** result, struct addrinfo ** dashs_result,
+           struct addrinfo * hints)
 {
 
   bool error = false;
@@ -532,6 +557,7 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
                 }
               dashSNum = argv[i];
 	      dashS = true;
+              *isdashS = true;
 	    }
 	  else
 	    {
@@ -559,22 +585,20 @@ parseArgs (int argc, char *argv[], bool * isClient, bool * keepListening,
       else if (i == argc - 1)
 	{
           int err;
-          if(dashS){
-            err = getaddrinfo(hostString, dashSNum, hints, result);
-          } 
+          if (*isTCP)
+          {
+             hints->ai_socktype = SOCK_STREAM;
+          }
           else
           {
-             if (*isTCP)
-             {
-               hints->ai_socktype = SOCK_STREAM;
-             }
-             else
-             {
-               hints->ai_socktype = SOCK_DGRAM;
-             }
-            
-            err = getaddrinfo(NULL, argv[i], hints, result);
+            hints->ai_socktype = SOCK_DGRAM;
           }
+         
+          if(dashS){
+            hints->ai_flags = 0;
+            err = getaddrinfo(dashSNum, argv[i], hints, dashs_result);
+          } 
+          err = getaddrinfo(NULL, argv[i], hints, result);
           if (err != 0){
             error = true;
             printf("Errors: %s", gai_strerror(err));
